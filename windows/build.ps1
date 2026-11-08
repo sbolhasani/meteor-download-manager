@@ -45,7 +45,7 @@ function Resolve-Torrent([string]$Source) {
     }
     Write-Host "Native torrent DLL: $dll"
     Write-Host "SHA-256: $((Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash)"
-    return @{ Dll = $dll; Licenses = $licenses; Metadata = $metadata; Archive = $archive }
+    return @{ Dll = $dll; Licenses = $licenses; Metadata = $metadata; Archive = $archive; Root = $root }
 }
 if ($PrebuiltNativePath -and -not $UsePrebuiltNative) { throw "-PrebuiltNativePath requires -UsePrebuiltNative." }
 if ($UsePrebuiltNative) {
@@ -71,16 +71,33 @@ foreach ($f in "nexonic-host.exe", "nexonic-host.dll", "nexonic-host.deps.json",
 if ((Get-FileHash build\host\Nexonic.Core.dll).Hash -ne (Get-FileHash "$out\Nexonic.Core.dll").Hash) { throw "Helper and app were built from different code" }
 Remove-Item build\host -Recurse -Force
 Get-ChildItem $out -Filter *.pdb | Remove-Item
-# Always ship both tools in ffmpeg/ next to the executable; never ship an unusable HLS build.
-$ffmpegSource = ".ffmpeg-cache\windows"
-foreach ($tool in @("ffmpeg.exe", "ffprobe.exe")) {
-  if (-not (Test-Path -LiteralPath (Join-Path $ffmpegSource $tool) -PathType Leaf)) {
-    throw "Missing $tool in $ffmpegSource. Run scripts/build-ffmpeg.sh windows .ffmpeg-cache/windows first."
+# In prebuilt mode, reuse FFmpeg from the same trusted Nexonic Portable package
+# used for the torrent DLL. Preserve the established beside-EXE layout.
+# In full-source mode the independently built FFmpeg cache remains the source.
+$ffmpegSource = $null
+if ($UsePrebuiltNative) {
+  $candidates = @(Get-ChildItem -LiteralPath $native.Root -Filter "ffmpeg.exe" -File -Recurse)
+  $pairs = @($candidates | Where-Object {
+    Test-Path -LiteralPath (Join-Path $_.DirectoryName "ffprobe.exe") -PathType Leaf
+  })
+  if ($pairs.Count -eq 1) {
+    $ffmpegSource = $pairs[0].DirectoryName
+  } elseif ($pairs.Count -gt 1) {
+    throw "Ambiguous FFmpeg binaries in prebuilt package: expected exactly one ffmpeg.exe/ffprobe.exe pair."
+  } elseif ($native.Archive) {
+    throw "Trusted Nexonic Portable ZIP does not include ffmpeg.exe and ffprobe.exe together."
   }
 }
-$ffmpegOut = Join-Path $out "ffmpeg"
-New-Item -ItemType Directory -Path $ffmpegOut -Force | Out-Null
-Copy-Item (Join-Path $ffmpegSource "ffmpeg.exe"), (Join-Path $ffmpegSource "ffprobe.exe") -Destination $ffmpegOut -Force
+if (-not $ffmpegSource) {
+  $ffmpegSource = ".ffmpeg-cache\windows"
+}
+foreach ($tool in @("ffmpeg.exe", "ffprobe.exe")) {
+  if (-not (Test-Path -LiteralPath (Join-Path $ffmpegSource $tool) -PathType Leaf)) {
+    throw "Missing $tool in $ffmpegSource. Provide a trusted Nexonic Portable ZIP via -PrebuiltNativePath or build the FFmpeg cache."
+  }
+}
+Copy-Item (Join-Path $ffmpegSource "ffmpeg.exe"), (Join-Path $ffmpegSource "ffprobe.exe") -Destination $out -Force
+Write-Host "FFmpeg source: $ffmpegSource (copied next to MeteorDownloadManager.exe)"
 # Video engine for YouTube and other sites (scripts/fetch-video-tools.sh windows .tools-cache/windows).
 if (Test-Path .tools-cache\windows\yt-dlp\yt-dlp.exe) {
   # The unpacked engine folder (starts at once; the one-file edition unpacked itself before every video), its program

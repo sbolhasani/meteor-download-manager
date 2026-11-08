@@ -223,10 +223,10 @@ jobs:
       - name: Check the app before it is published (every tool present and running)
         shell: pwsh
         run: |
-          foreach ($f in "NexonicDownloadManager.exe", "nexonic-host.exe", "ffmpeg\ffmpeg.exe", "ffmpeg\ffprobe.exe", "video-engine\nexonic-video-engine.exe", "nexonic_torrent.dll") {
+          foreach ($f in "NexonicDownloadManager.exe", "nexonic-host.exe", "ffmpeg.exe", "ffprobe.exe", "video-engine\nexonic-video-engine.exe", "nexonic_torrent.dll") {
             if (-not (Test-Path "build\win\$f")) { throw "missing from the app folder: $f" }
           }
-          $m = & build\win\ffmpeg\ffmpeg.exe -hide_banner -muxers 2>&1 | Out-String
+          $m = & build\win\ffmpeg.exe -hide_banner -muxers 2>&1 | Out-String
           if ($m -notmatch " mp4 ") { throw "ffmpeg has no mp4 muxer" }
           & build\win\video-engine\nexonic-video-engine.exe --version
           if ($LASTEXITCODE -ne 0) { throw "the video engine does not run" }
