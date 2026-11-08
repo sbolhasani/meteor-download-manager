@@ -433,21 +433,35 @@ public partial class MainWindow : Window
         Grid.Focus();
     }
 
-    /// <summary>Asks before anything is removed. Files stay unless the user chose the Recycle Bin.</summary>
+    /// <summary>Remove list entries by default; file deletion requires explicit opt-in.</summary>
     void ConfirmRemove(List<Row> rows, bool toRecycleBin)
     {
         if (rows.Count == 0) return;
         var what = rows.Count == 1 ? "this download" : $"these {rows.Count} downloads";
-        var text = toRecycleBin
-            ? $"Delete {what} and move the {(rows.Count == 1 ? "file" : "files")} to the Recycle Bin?\n\nYou can still restore them from the Recycle Bin."
-            : $"Remove {what} from the list?\n\nThe downloaded files stay on your PC.";
-        if (MessageBox.Show(this, text, "Delete", MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel) != MessageBoxResult.OK) return;
-        foreach (var r in rows)
+        var answer = ThemedMessageBox.ShowWithOption(this,
+            $"Remove {what} from the list?\n\nDownloaded files will remain on your PC unless you select the option below.",
+            "Remove downloads", MessageBoxButton.OKCancel, MessageBoxImage.Warning,
+            MessageBoxResult.Cancel, "Also move downloaded files to the Recycle Bin");
+        if (answer.Choice != MessageBoxResult.OK) return;
+        foreach (var row in rows)
         {
-            if (toRecycleBin && r.Record.SavedPath is { } p && System.IO.File.Exists(p))
-                Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(p, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-            manager.Remove(r);
+            if (answer.Checked && row.Record.SavedPath is { } path && System.IO.File.Exists(path))
+            {
+                try
+                {
+                    Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(path,
+                        Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                        Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                }
+                catch (Exception e)
+                {
+                    ThemedMessageBox.Show(this,
+                        $"Could not move '{row.Record.FileName}' to the Recycle Bin.\n\n{e.Message}\n\nThis download remains in the list.",
+                        "File deletion failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                    continue;
+                }
+            }
+            manager.Remove(row);
         }
     }
     void OnPauseAll(object s, RoutedEventArgs e) => manager.PauseAll();
@@ -455,12 +469,8 @@ public partial class MainWindow : Window
     void OnExit(object s, RoutedEventArgs e) { manager.Save(); WindowPlace.Save(this); manager.RequestQuit(); }
     void OnClear(object s, RoutedEventArgs e)
     {
-        var done = manager.Rows.Where(r => r.Record.Status == DownloadStatus.Finished).ToList();  // only the ones counted in the question
-        var n = done.Count;
-        if (n == 0) return;
-        if (MessageBox.Show(this, $"Remove {n} completed {(n == 1 ? "download" : "downloads")} from the list?\n\nThe downloaded files stay on your PC.",
-                "Delete Completed", MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxResult.Cancel) == MessageBoxResult.OK)
-            foreach (var r in done) manager.Remove(r);
+        var done = manager.Rows.Where(r => r.Record.Status == DownloadStatus.Finished).ToList();
+        if (done.Count > 0) ConfirmRemove(done, toRecycleBin: false);
     }
     void OnScheduler(object s, RoutedEventArgs e) { Dialogs.Scheduler(this, manager, CurrentQueue); BuildSidebar(); }
     void OnStartQueue(object s, RoutedEventArgs e) { manager.StartQueue(CurrentQueue); BuildSidebar(); }

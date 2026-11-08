@@ -63,12 +63,12 @@ public static class Updater
         if (installing) return;
         if (release is null)
         {
-            if (manual) MessageBox.Show("GitHub didn't answer. Check your internet connection and try again later, or download the newest version from the website.", "Couldn't check for updates");
+            if (manual) ThemedMessageBox.Show("GitHub didn't answer. Check your internet connection and try again later, or download the newest version from the website.", "Couldn't check for updates");
             return;
         }
         if (!Updates.IsNewer(release.Version, current))
         {
-            if (manual) MessageBox.Show($"Meteor Download Manager {current} is the newest version.", "You're up to date");
+            if (manual) ThemedMessageBox.Show($"Meteor Download Manager {current} is the newest version.", "You're up to date");
             return;
         }
         if (!manual && manager.Settings.SkippedVersion == release.Version) return;
@@ -163,7 +163,7 @@ public static class Updater
             {
                 try { File.Delete(file); } catch { }
                 installing = false;
-                MessageBox.Show("The downloaded update did not match the published file, so it was not installed.\n" +
+                ThemedMessageBox.Show("The downloaded update did not match the published file, so it was not installed.\n" +
                                 "Download it from the release page instead.", "Update");
                 HelpWindows.Open(r.Page);
                 return;
@@ -174,7 +174,7 @@ public static class Updater
         {
             closingProgress = true; progress.Close(); closingProgress = false;
             installing = false;
-            MessageBox.Show("The update could not be downloaded: " + e.Message + "\nTry again later, or download it from the release page.", "Update");
+            ThemedMessageBox.Show("The update could not be downloaded: " + e.Message + "\nTry again later, or download it from the release page.", "Update");
             return;
         }
         manager?.RequestQuit();

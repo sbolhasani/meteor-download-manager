@@ -619,7 +619,7 @@ public static partial class Dialogs
         SiteButton("Remove", () =>
         {
             var i = siteList.SelectedIndex;
-            if (i < 0 || MessageBox.Show(f.Window, $"Remove the settings for {HostProfiles.Normalize(profiles[i].Host)}?", "Remove Site",
+            if (i < 0 || ThemedMessageBox.Show(f.Window, $"Remove the settings for {HostProfiles.Normalize(profiles[i].Host)}?", "Remove Site",
                     MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxResult.Cancel) != MessageBoxResult.OK) return;
             profiles.RemoveAt(i);
             FillSites();

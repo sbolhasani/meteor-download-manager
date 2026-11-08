@@ -375,7 +375,7 @@ public static class DownloadWindows
         {
             var what = row.Record.Torrent != null ? $"{row.Record.FileName} is removed from the list. Torrent files stay on disk."
                 : $"The part of {row.Record.FileName} already downloaded is deleted. It stays in the list as Canceled; Resume starts it again.";
-            if (MessageBox.Show(w, what, "Cancel this download?", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            if (ThemedMessageBox.Show(w, what, "Cancel this download?", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             w.Close();
             m.Cancel(row);
         });
