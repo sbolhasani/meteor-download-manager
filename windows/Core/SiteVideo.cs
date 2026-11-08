@@ -713,7 +713,34 @@ public sealed class SiteVideoTransfer : IDownloader
             Fail(SiteVideo.Error(text));
             return;
         }
+        // The extractor can return audio-only tracks inside MP4/fMP4 on any site.
+        // Verify the actual streams and remux without re-encoding when necessary.
+        // Keep the original file if media inspection/finalization fails.
+        var media = FFmpeg.Probe(saved);
+        if (media is { HasAudio: true, HasVideo: false })
+        {
+            var expected = media.AudioExtension;
+            var current = Path.GetExtension(saved);
+            // Always rebuild MP4/M4A to ensure seek metadata is present.
+            if (!current.Equals(expected, StringComparison.OrdinalIgnoreCase)
+                || expected.Equals(".m4a", StringComparison.OrdinalIgnoreCase))
+            {
+                var target = FileNames.Unique(Path.GetFileNameWithoutExtension(saved) + expected, Path.GetDirectoryName(saved)!);
+                if (FFmpeg.RemuxAudio(saved, target))
+                {
+                    try { File.Delete(saved); } catch { }
+                    saved = target;
+                }
+                else
+                {
+                    try { File.Delete(target); } catch { }
+                    Fail("Could not finalize the audio without re-encoding. The original download was kept.");
+                    return;
+                }
+            }
+        }
         try { Directory.Delete(Temp, true); } catch { }
+        Record.SavedPath = saved;
         Record.FileName = Path.GetFileName(saved);
         Record.Size = new FileInfo(saved).Length;
         Record.StreamBytes = Record.Size;

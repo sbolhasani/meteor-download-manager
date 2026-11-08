@@ -87,3 +87,16 @@ public class HlsPendingNameTests
     public void Hls_name_does_not_claim_mp4_before_probe(string input, string expected) =>
         Assert.Equal(expected, HLS.PendingFileName(input));
 }
+
+public class MediaFormatSelectionTests
+{
+    [Fact]
+    public void Audio_only_choices_have_no_video_renditions()
+    {
+        var metadata = """{"title":"Sound","duration":10,"formats":[{"vcodec":"none","acodec":"mp4a.40.2","abr":160,"ext":"m4a"}]}""";
+        var choices = SiteVideo.ParseChoices(metadata);
+        Assert.NotNull(choices);
+        Assert.Empty(choices.Video);
+        Assert.NotNull(choices.SoundSize);
+    }
+}

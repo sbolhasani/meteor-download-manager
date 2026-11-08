@@ -64,8 +64,8 @@ public static class DownloadWindows
         var head = new DockPanel();
         var name = new TextBox
         {
-            Text = stream ? HLS.PendingFileName(job.FileName is { Length: > 0 } n ? FileNames.Sanitize(n) : FileNames.FromUrl(job.Url))
-                : job.FileName is { Length: > 0 } n ? FileNames.Sanitize(n) : site ? $"Video from {uri.Host}" : FileNames.FromUrl(job.Url),
+            Text = stream ? HLS.PendingFileName(job.FileName is { Length: > 0 } streamName ? FileNames.Sanitize(streamName) : FileNames.FromUrl(job.Url))
+                : job.FileName is { Length: > 0 } siteName ? FileNames.Sanitize(siteName) : site ? $"Media from {uri.Host}" : FileNames.FromUrl(job.Url),
             FontSize = 15, FontWeight = FontWeights.SemiBold, Padding = new Thickness(4, 3, 4, 3),
         };
         var icon = new Image { Width = 40, Height = 40, Margin = new Thickness(0, 0, 12, 0), Source = FileIcon.For(name.Text) };
@@ -118,6 +118,7 @@ public static class DownloadWindows
         SiteVideo.Choices? offered = null;
         long? bestSize = null;
         var looked = false;
+        bool autoAudio = false;
         int Chosen() => quality.SelectedItem is ComboBoxItem { Tag: int t } ? t : 0;
         void ShowSize()
         {
@@ -189,6 +190,13 @@ public static class DownloadWindows
         {
             infoPath = path;
             offered = found;
+            // No video renditions: classify as audio automatically, regardless of host.
+            // Do not override a user's manual quality selection.
+            if (found is { Video.Count: 0, SoundSize: not null } && !autoAudio && Chosen() == 0)
+            {
+                autoAudio = true;
+                FillQualities(-1);
+            }
             bestSize = total ?? found?.Video.FirstOrDefault()?.Size;  // estimated from the bitrate when not given
             looked = true;
             FillQualities(Chosen());
@@ -240,7 +248,15 @@ public static class DownloadWindows
             return;
         }
         found(path, SiteVideo.ParseChoices(result.Item2), info.Size);
-        if (string.IsNullOrEmpty(job.FileName)) name.Text = FileNames.Sanitize($"{info.Title}.{info.Ext}");
+        if (string.IsNullOrEmpty(job.FileName))
+        {
+            // The extractor's pre-download ext describes its source, not necessarily
+            // the final seekable container. Avoid advertising .mp4 for audio-only media.
+            var choices = SiteVideo.ParseChoices(result.Item2);
+            name.Text = choices is { Video.Count: 0, SoundSize: not null }
+                ? FileNames.Sanitize(info.Title)
+                : FileNames.Sanitize($"{info.Title}.{info.Ext}");
+        }
     }
 
     /// <summary>Asks the server for the size (and the real file name) without downloading the file.</summary>
