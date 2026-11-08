@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Nexonic Download Manager",
-  "version": "0.19.1",
-  "description": "Sends downloads, videos and links from the browser to Nexonic Download Manager.",
+  "name": "Meteor Download Manager",
+  "version": "0.20.0",
+  "description": "Download interception and streaming-video detection for Meteor Download Manager.",
   "minimum_chrome_version": "116",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs2y9n9vk3+lFgDrGZIq3kD2yFdZhQOU0/a6xOcu9EFuX0LRXNpaOb+djHiAewN4wEMuv6YaWOqglAfH2FRjIPbJ0AwH3vKMKg8izUd2ukvbnW8yMx4LWhsL70LwTel1a06XXk9y/5Tm1Kvgq3xtEwhsphO7VnVHpE0vTmqk0X34URtW87ganlFvhWiuwANhNJgLbV2feJSaYe60ffKDC7M/c3+WW0O0Mb9yxhrG93UGnnCHVgMEMiwE0L75Ylmy2ppYpacwk9FZt0kw5N0XWAG1r4XAOzE2zvGJ4krf0YK+emIwmI/3jIpq9GkVxS7dsja2jDEtpV/exc5c6KdHqTwIDAQAB",
   "permissions": [
@@ -13,7 +13,8 @@
     "cookies",
     "scripting",
     "webRequest",
-    "tabs"
+    "tabs",
+    "webNavigation"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -24,13 +25,23 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Nexonic Download Manager"
+    "default_title": "Meteor Download Manager"
   },
   "icons": {
     "16": "icons/16.png",
     "48": "icons/48.png",
     "128": "icons/128.png"
   },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "page-observer.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
   "content_scripts": [
     {
       "matches": [
@@ -39,7 +50,7 @@
       "js": [
         "content.js"
       ],
-      "run_at": "document_idle",
+      "run_at": "document_start",
       "all_frames": true
     }
   ]

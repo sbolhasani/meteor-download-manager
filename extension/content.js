@@ -1,159 +1,109 @@
-// "Download this video" button over audio and video players on web pages.
+// Meteor content integration: UI and page network observer, runs in every frame.
 (() => {
-  if (window.__nexonicVideoButton) return;
-  window.__nexonicVideoButton = true;
-
-  let enabled = true;
-  chrome.storage.sync.get({ videoButton: true }, (s) => (enabled = s.videoButton));
+  if (window.__meteorContent) return;
+  window.__meteorContent = true;
+  let enabled = true, player = null, dismiss = 0;
+  chrome.storage.sync.get({ videoButton: true }, (s) => { enabled = !!s.videoButton; });
   chrome.storage.onChanged.addListener((c) => {
-    if (c.videoButton) enabled = c.videoButton.newValue;
+    if (c.videoButton) enabled = !!c.videoButton.newValue;
+  });
+
+  // The page observer runs in MAIN world and only reports candidate URL and MIME
+  // metadata. It never reads or posts response bodies, credentials or auth headers.
+  try {
+    const script = document.createElement("script");
+    script.src = chrome.runtime.getURL("page-observer.js");
+    script.async = false;
+    (document.documentElement || document.head).appendChild(script);
+    script.remove();
+  } catch {}
+  const reported = new Map();
+  window.addEventListener("message", (event) => {
+    if (event.source !== window || event.origin !== location.origin) return;
+    const data = event.data;
+    if (!data || data.source !== "meteor-page-observer" || data.type !== "media") return;
+    try {
+      const u = new URL(data.url, location.href);
+      if (!/^https?:$/.test(u.protocol)) return;
+      if (reported.has(u.href) && Date.now() - reported.get(u.href) < 30000) return;
+      reported.set(u.href, Date.now());
+      if (reported.size > 100) reported.delete(reported.keys().next().value);
+      chrome.runtime.sendMessage({ type: "detected-media", url: u.href, mime: String(data.mime || "").slice(0, 100) }).catch(() => {});
+    } catch {}
   });
 
   const host = document.createElement("div");
-  host.style.cssText = "position:fixed;z-index:2147483647;top:0;left:0;display:none";
-  const root = host.attachShadow({ mode: "closed" });
-  root.innerHTML = `
-    <style>
-      button{font:600 12px system-ui,sans-serif;color:#fff;background:#008f9e;border:0;border-radius:6px;padding:6px 10px;
-        cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35)}
-      button:hover{background:#00727e}
-      ul{list-style:none;margin:4px 0 0;padding:4px;background:#fff;color:#111;border-radius:6px;max-width:360px;
-        box-shadow:0 2px 10px rgba(0,0,0,.35);font:12px system-ui,sans-serif}
-      li{padding:5px 8px;border-radius:4px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      li:hover{background:#e3f4f6}
-      .note{color:#666;cursor:default}
-    </style>
-    <button type="button">Download this video</button>
-    <ul hidden></ul>`;
-  const button = root.querySelector("button");
-  const list = root.querySelector("ul");
-  let target = null;
-  let hideTimer = 0;
-
-  const label = (m) =>
-    m.kind === "stream"
-      ? ` (${[m.height ? `${m.height}p` : "", m.live ? "live" : "", "best quality"].filter(Boolean).join(", ")})`
-      : m.size > 0 ? ` (${(m.size / 1048576).toFixed(1)} MB)` : "";
-
+  host.style.cssText = "position:fixed;z-index:2147483647;display:none;top:0;left:0";
+  const shadow = host.attachShadow({ mode: "closed" });
+  shadow.innerHTML = '<style>button{cursor:pointer;font:600 12px system-ui;color:#fff;background:#1364a3;border:0;border-radius:7px;padding:7px 11px;box-shadow:0 2px 8px #0005}ul{background:#fff;color:#222;border-radius:7px;padding:5px;margin:4px 0 0;max-width:400px;max-height:300px;overflow:auto;box-shadow:0 2px 8px #0005;list-style:none;font:12px system-ui}li{padding:7px;cursor:pointer}li:hover{background:#e8f2fa}.note{cursor:default;color:#555}</style><button type="button">Download this video</button><ul hidden></ul>';
+  const button = shadow.querySelector("button"), menu = shadow.querySelector("ul");
+  function hide() { host.style.display = "none"; menu.hidden = true; player = null; }
   function place() {
-    if (!target || !target.isConnected) return hide();
-    const r = target.getBoundingClientRect();
-    if (r.width < 160 || r.height < 40 || r.bottom < 0 || r.top > innerHeight) return hide();
-    host.style.top = `${Math.max(4, r.top + 8)}px`;
-    host.style.left = `${Math.min(innerWidth - 190, Math.max(4, r.right - 180))}px`;
+    if (!player || !player.isConnected) return hide();
+    const box = player.getBoundingClientRect();
+    if (box.width < 120 || box.height < 50 || box.bottom < 0 || box.top > innerHeight) return hide();
+    host.style.top = Math.max(3, box.top + 6) + "px";
+    host.style.left = Math.max(3, Math.min(innerWidth - 190, box.right - 185)) + "px";
     host.style.display = "block";
   }
-
-  function hide() {
-    host.style.display = "none";
-    list.hidden = true;
-    target = null;
-  }
-
   function show(el) {
     if (!enabled) return;
-    clearTimeout(hideTimer);
-    target = el;
+    clearTimeout(dismiss);
+    player = el;
+    if (!host.isConnected) document.documentElement?.appendChild(host);
     button.textContent = el.tagName === "AUDIO" ? "Download this audio" : "Download this video";
-    if (!host.isConnected) document.documentElement.appendChild(host);
     place();
+    const src = el.currentSrc || el.src;
+    if (/^https?:/i.test(src || "")) chrome.runtime.sendMessage({ type: "detected-media", url: src }).catch(() => {});
   }
-
-  // YouTube, Instagram, Facebook, X, TikTok … : the app's video engine saves the post's video in the best quality.
-  const SITES = /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com|instagram\.com|facebook\.com|fb\.watch|x\.com|twitter\.com|tiktok\.com|vimeo\.com|dailymotion\.com|reddit\.com|twitch\.tv|linkedin\.com|pinterest\.com|threads\.net|bilibili\.com|rumble\.com|streamable\.com)$/i;
-  const onVideoSite = SITES.test(location.hostname);
-  const POST = /\/(watch|shorts|reel|reels|p|tv|videos?|status|post|clip)\b|\/v\//i;
-
-  /** The link of the post a player belongs to (feeds show many videos on one page). */
-  function postLink(el) {
-    if (/\/(watch|shorts|reel|p|status|videos?)\b/i.test(location.pathname)) return location.href;
-    for (let n = el, i = 0; n && i < 25; n = n.parentElement, i++) {
-      const a = n.querySelector && [...n.querySelectorAll("a[href]")].find((x) => POST.test(new URL(x.href, location.href).pathname));
-      if (a) return new URL(a.href, location.href).href;
-    }
-    return location.href;
+  async function send(media) {
+    const reply = await chrome.runtime.sendMessage({
+      type: "send-link", url: media.url, referrer: location.href,
+      stream: media.kind === "stream", fileName: media.name,
+      site: media.kind === "site", audioOnly: !!media.audioOnly,
+    }).catch(() => null);
+    button.textContent = reply?.ok ? "Sent to Meteor" : "Meteor is unavailable";
+    dismiss = setTimeout(hide, 1400);
   }
-
-  function send(m) {
-    const msg = { type: "send-link", url: m.url, referrer: location.href };
-    if (m.kind === "stream") Object.assign(msg, { stream: true, fileName: m.name });
-    if (m.kind === "site") Object.assign(msg, { site: true, audioOnly: !!m.audioOnly });
-    chrome.runtime.sendMessage(msg, (r) => {
-      button.textContent = r && r.ok ? "Sent to Nexonic" : "Open Nexonic first";
-      setTimeout(hide, 1500);
-    });
+  function entry(label, callback, note = false) {
+    const li = document.createElement("li");
+    li.textContent = label;
+    if (note) li.className = "note";
+    else li.addEventListener("click", callback);
+    menu.appendChild(li);
   }
-
-  button.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (onVideoSite && target) {
-      // Shown at once: the app picks the best quality (its download window can choose another one).
-      list.textContent = "";
-      const link = postLink(target);
-      for (const [label, audioOnly] of [["Video, best quality", false], ["Sound only", true]]) {
-        const li = document.createElement("li");
-        li.textContent = label;
-        li.onclick = () => send({ url: link, kind: "site", audioOnly });
-        list.appendChild(li);
-      }
-      list.hidden = false;
+  const videoSite = /(^|\.)(youtube\.com|youtu\.be|instagram\.com|facebook\.com|x\.com|twitter\.com|tiktok\.com|vimeo\.com|dailymotion\.com|reddit\.com|twitch\.tv)$/i.test(location.hostname);
+  button.addEventListener("click", async (event) => {
+    event.preventDefault(); event.stopPropagation();
+    menu.replaceChildren();
+    if (videoSite) {
+      entry("Video, best quality", () => send({ url: location.href, kind: "site" }));
+      entry("Audio only", () => send({ url: location.href, kind: "site", audioOnly: true }));
+      menu.hidden = false;
       return;
     }
-    const src = target && (target.currentSrc || target.src);
-    chrome.runtime.sendMessage({ type: "video-button", src }, (r) => {
-      const media = (r && r.media) || [];
-      list.textContent = "";
-      if (media.length === 1) return send(media[0]);
-      if (!media.length) {
-        const li = document.createElement("li");
-        li.className = "note";
-        li.textContent = r && r.locked
-          ? "This video is copy-protected by the site, so it can't be saved."
-          : "No video found yet. Play the video for a few seconds, then click again.";
-        li.style.whiteSpace = "normal";
-        list.appendChild(li);
-      }
-      for (const m of media) {
-        const li = document.createElement("li");
-        li.textContent = `${m.name}${label(m)}`;
-        li.title = m.url;
-        li.onclick = () => send(m);
-        list.appendChild(li);
-      }
-      list.hidden = false;
-    });
+    const src = player?.currentSrc || player?.src;
+    const response = await chrome.runtime.sendMessage({ type: "video-button", src }).catch(() => null);
+    const media = response?.media || [];
+    if (media.length === 1) return send(media[0]);
+    if (!media.length) entry(response?.locked ? "This media is protected." : "Play the video, then try again.", null, true);
+    for (const m of media) entry(m.name + (m.height ? " · " + m.height + "p" : "") + (m.live ? " · live" : ""), () => send(m));
+    menu.hidden = false;
   });
-
-  host.addEventListener("mouseenter", () => clearTimeout(hideTimer));
-  host.addEventListener("mouseleave", () => (hideTimer = setTimeout(hide, 800)));
-  document.addEventListener(
-    "mouseover",
-    (e) => {
-      if (!enabled) return;
-      const el = e.target && e.target.closest ? e.target.closest("video, audio") : null;
-      if (el) show(el);
-      else if (target && !host.contains(e.target)) {
-        const r = target.getBoundingClientRect();
-        const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
-        if (!inside) {
-          clearTimeout(hideTimer);
-          hideTimer = setTimeout(hide, 800);
-        }
-      }
-    },
-    true,
-  );
-  // Re-position at most once per frame, and only while the button is showing.
-  let queued = false;
-  const placeSoon = () => {
-    if (!target || queued) return;
-    queued = true;
-    requestAnimationFrame(() => {
-      queued = false;
-      place();
-    });
-  };
-  addEventListener("scroll", placeSoon, { capture: true, passive: true });
-  addEventListener("resize", placeSoon, { passive: true });
+  document.addEventListener("mouseover", (event) => {
+    const el = event.target?.closest?.("video,audio");
+    if (el) show(el);
+    else if (player && !host.contains(event.target)) {
+      clearTimeout(dismiss);
+      dismiss = setTimeout(hide, 900);
+    }
+  }, true);
+  host.addEventListener("mouseenter", () => clearTimeout(dismiss));
+  host.addEventListener("mouseleave", () => { dismiss = setTimeout(hide, 900); });
+  addEventListener("scroll", () => { if (player) requestAnimationFrame(place); }, { passive: true, capture: true });
+  addEventListener("resize", () => { if (player) requestAnimationFrame(place); });
+  const observer = new MutationObserver(() => {
+    if (player && !player.isConnected) hide();
+  });
+  observer.observe(document, { childList: true, subtree: true });
 })();

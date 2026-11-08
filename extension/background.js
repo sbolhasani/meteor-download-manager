@@ -1,268 +1,255 @@
+// Meteor browser integration — independent Manifest V3 implementation.
+// The Chrome IDM extension is a functional reference, not a runtime dependency.
 import {
-  DEFAULTS, HOST, TROUBLESHOOT, addMedia, cookieHeader, downloadKey, header, isMedia, isStreamPlaylist, isVideoSite, isWebLink, mayBeMedia, nameFromUrl,
-  originOf, shouldTakeOver, sortMedia, summarizePlaylist, titleToName,
+  HOST, DEFAULTS, TROUBLESHOOT, addMedia, cookieHeader, header, isMedia,
+  isStreamPlaylist, isVideoSite, isWebLink, mayBeMedia, nameFromUrl,
+  originOf, shouldTakeOver, sortMedia, summarizePlaylist, titleToName, downloadKey,
 } from "./helpers.js";
 
-async function settings() {
-  return { ...DEFAULTS, ...(await chrome.storage.sync.get(Object.keys(DEFAULTS))) };
-}
+const MAX_ITEMS = 30;
+const requestDetails = new Map();
+const handled = new Map();
+const inspecting = new Map();
+let storageQueue = Promise.resolve();
+const serial = (fn) => (storageQueue = storageQueue.then(fn, fn));
+const config = async () => ({ ...DEFAULTS, ...(await chrome.storage.sync.get(Object.keys(DEFAULTS))) });
+const getMedia = async (id) => (await chrome.storage.session.get("media-" + id))["media-" + id] || [];
+const setMedia = async (id, list) => chrome.storage.session.set({ ["media-" + id]: list.slice(0, MAX_ITEMS) });
+const validTab = (id) => Number.isInteger(id) && id >= 0;
+const getHeader = (headers, name) => header(headers || [], name);
+const getOrigin = (d) => d.initiator || d.documentUrl || d.originUrl || "";
 
+async function showStatus(ok) {
+  await chrome.action.setBadgeText({ text: ok ? "" : "!" }).catch(() => {});
+  if (!ok) await chrome.action.setBadgeBackgroundColor({ color: "#cf222e" }).catch(() => {});
+  await chrome.action.setTitle({ title: ok ? "Meteor Download Manager" : TROUBLESHOOT }).catch(() => {});
+}
 async function cookiesFor(url) {
-  try {
-    return cookieHeader(await chrome.cookies.getAll({ url }));
-  } catch (_) {
-    return ""; // no cookie access for this address
-  }
+  try { return cookieHeader(await chrome.cookies.getAll({ url })); }
+  catch { return ""; }
 }
-
 async function send(url, extra = {}) {
-  if (!isWebLink(url)) return false;  // nothing else is ever sent to the app (or gets cookies looked up)
-  const cookies = await cookiesFor(url);
-  const message = { type: "download", url, cookies, userAgent: navigator.userAgent, ...extra };
+  if (!isWebLink(url)) return false;
+  const message = {
+    type: "download", url, cookies: await cookiesFor(url),
+    userAgent: navigator.userAgent, ...extra,
+  };
   try {
-    // A helper that doesn't answer within a few seconds counts as unreachable, so the browser keeps the download.
-    const reply = await Promise.race([
+    const r = await Promise.race([
       chrome.runtime.sendNativeMessage(HOST, message),
       new Promise((resolve) => setTimeout(() => resolve(null), 8000)),
     ]);
-    const ok = !!(reply && reply.ok);
+    const ok = !!r?.ok;
     await showStatus(ok);
     return ok;
-  } catch (_) {
-    await showStatus(false);
-    return false;
-  }
+  } catch { await showStatus(false); return false; }
 }
-
-/** The toolbar button shows "!" and says what to do while the app can't be reached. */
-async function showStatus(ok) {
-  await chrome.action.setBadgeText({ text: ok ? "" : "!" });
-  if (!ok) await chrome.action.setBadgeBackgroundColor({ color: "#cf222e" }).catch(() => {});
-  await chrome.action.setTitle({ title: ok ? "Nexonic Download Manager" : TROUBLESHOOT }).catch(() => {});
-}
-
-// ---- Browser downloads go to the app ----
-
-const handedOver = new Map(); // link -> time, so one click is never sent to the app twice
-
-chrome.downloads.onCreated.addListener(async (item) => {
-  if (!shouldTakeOver(item, await settings())) return;
+async function findTab(d) {
+  if (validTab(d.tabId)) return d.tabId;
+  const origin = originOf(getOrigin(d));
+  if (!origin) return -1;
   try {
-    await chrome.downloads.pause(item.id);
-  } catch (_) {
-    return; // already finished or not pausable
+    const tabs = (await chrome.tabs.query({})).filter((t) => originOf(t.url || "") === origin);
+    return (tabs.find((t) => t.active) || (tabs.length === 1 ? tabs[0] : null))?.id ?? -1;
+  } catch { return -1; }
+}
+async function offer(tabId, item) {
+  if (!validTab(tabId) || !isWebLink(item.url)) return;
+  return serial(async () => {
+    const old = await getMedia(tabId);
+    const list = addMedia(old, item);
+    await setMedia(tabId, sortMedia(list));
+  });
+}
+function rememberRequest(d) {
+  if (!isWebLink(d.url)) return;
+  const h = d.requestHeaders || [];
+  requestDetails.set(d.requestId, {
+    url: d.url, tabId: d.tabId, referrer: getHeader(h, "referer") || getOrigin(d),
+    origin: getHeader(h, "origin"), time: Date.now(),
+  });
+  if (requestDetails.size > 2000) {
+    const cutoff = Date.now() - 120000;
+    for (const [key, v] of requestDetails) if (v.time < cutoff) requestDetails.delete(key);
   }
+}
+chrome.webRequest.onBeforeSendHeaders.addListener(
+  rememberRequest,
+  { urls: ["<all_urls>"], types: ["media", "xmlhttprequest", "other", "object"] },
+  ["requestHeaders", "extraHeaders"],
+);
+chrome.webRequest.onErrorOccurred.addListener((d) => requestDetails.delete(d.requestId), { urls: ["<all_urls>"] });
+chrome.webRequest.onCompleted.addListener((d) => requestDetails.delete(d.requestId), { urls: ["<all_urls>"] });
+
+async function inspectPlaylist(tabId, url, context) {
+  const key = tabId + "|" + url;
+  if (inspecting.has(key)) return;
+  inspecting.set(key, Date.now());
+  if (inspecting.size > 300) {
+    for (const [k, t] of inspecting) if (Date.now() - t > 180000) inspecting.delete(k);
+  }
+  let summary = null;
+  try {
+    // Some playlists cannot be fetched by the extension with the page's request context.
+    // Offer confirmed HLS responses even if this optional inspection fails.
+    const response = await fetch(url, { credentials: "include", redirect: "follow" });
+    if (response.ok) {
+      const body = await response.text();
+      const result = summarizePlaylist(body, url);
+      if (result.valid) summary = result;
+    }
+  } catch { /* native engine performs final validation */ }
+  if (!summary) summary = {
+    variants: [], height: 0, protected: false, live: false, unverified: true,
+  };
+  let title = "video";
+  try { title = titleToName((await chrome.tabs.get(tabId)).title); } catch {}
+  const list = await getMedia(tabId);
+  if (list.some((m) => (m.variants || []).includes(url))) return;
+  await offer(tabId, {
+    kind: "stream", url, name: title + ".mp4", height: summary.height, size: -1,
+    variants: summary.variants, protected: summary.protected, live: summary.live,
+    unverified: !!summary.unverified, referrer: context.referrer || "",
+  });
+}
+async function onResponse(d) {
+  if (d.statusCode >= 400 || !isWebLink(d.url)) return;
+  const mime = getHeader(d.responseHeaders, "content-type");
+  if (!mayBeMedia(d.url, mime)) return;
+  const tabId = await findTab(d);
+  if (!validTab(tabId)) return;
+  if (isVideoSite(getOrigin(d))) return; // site's own resolver handles those pages
+  const context = requestDetails.get(d.requestId) || {};
+  if (isStreamPlaylist(d.url, mime)) {
+    await inspectPlaylist(tabId, d.url, context);
+    return;
+  }
+  const range = getHeader(d.responseHeaders, "content-range");
+  const length = Number(range.match(/\/(\d+)\s*$/)?.[1] || getHeader(d.responseHeaders, "content-length") || -1);
+  if (isMedia(d.url, mime, length)) await offer(tabId, {
+    kind: "file", url: d.url, name: nameFromUrl(d.url),
+    size: length > 0 ? length : -1, type: mime.split(";")[0], referrer: context.referrer || "",
+  });
+}
+chrome.webRequest.onHeadersReceived.addListener(
+  (d) => { onResponse(d).catch(() => {}); },
+  { urls: ["<all_urls>"], types: ["media", "object", "xmlhttprequest", "other"] },
+  ["responseHeaders"],
+);
+
+// Browser download takeover: only cancel browser downloads after native acceptance.
+chrome.downloads.onCreated.addListener(async (item) => {
+  if (!shouldTakeOver(item, await config())) return;
+  try { await chrome.downloads.pause(item.id); } catch { return; }
   const url = item.finalUrl || item.url;
   const key = downloadKey(url);
   const now = Date.now();
-  for (const [u, t] of handedOver) if (now - t > 10000) handedOver.delete(u);
-  if (handedOver.has(key)) {
-    // The same link a moment ago (a redirect or a double click): the app already has it.
+  for (const [k, t] of handled) if (now - t > 10000) handled.delete(k);
+  if (handled.has(key)) {
     await chrome.downloads.cancel(item.id).catch(() => {});
     await chrome.downloads.erase({ id: item.id }).catch(() => {});
     return;
   }
-  handedOver.set(key, now);
-  const name = item.filename ? item.filename.split(/[\\/]/).pop() : undefined;
-  const size = item.totalBytes > 0 ? item.totalBytes : item.fileSize > 0 ? item.fileSize : undefined;
-  const ok = await send(url, { referrer: item.referrer || "", fileName: name, size, browser: true });
-  if (!ok) handedOver.delete(key);
+  handled.set(key, now);
+  const ok = await send(url, {
+    fileName: item.filename?.split(/[\\/]/).pop(),
+    referrer: item.referrer || "", size: item.totalBytes > 0 ? item.totalBytes : undefined,
+    browser: true,
+  });
   if (ok) {
     await chrome.downloads.cancel(item.id).catch(() => {});
     await chrome.downloads.erase({ id: item.id }).catch(() => {});
   } else {
-    await chrome.downloads.resume(item.id).catch(() => {}); // the app is not reachable: let the browser finish
+    handled.delete(key);
+    await chrome.downloads.resume(item.id).catch(() => {});
   }
 });
 
-// ---- Right-click menu ----
-
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({ id: "nexonic-download", title: "Download with Nexonic", contexts: ["link", "video", "audio"] });
-  chrome.contextMenus.create({ id: "nexonic-page-video", title: "Download this page's video with Nexonic", contexts: ["page", "video"] });
-  chrome.contextMenus.create({ id: "nexonic-all", title: "Download all links with Nexonic", contexts: ["page", "selection"] });
-});
-
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  const referrer = info.pageUrl || (tab && tab.url) || "";
-  if (info.menuItemId === "nexonic-all" && tab) {
-    const links = await pageLinks(tab.id, !!info.selectionText);
-    for (const url of links) await send(url, { referrer });
-    return;
-  }
-  if (info.menuItemId === "nexonic-page-video") {
-    send(info.pageUrl || (tab && tab.url), { site: true, browser: true });
-    return;
-  }
-  const url = info.linkUrl || info.srcUrl;
-  if (url && /^https?:\/\//i.test(url)) send(url, { referrer, browser: true });
-});
-
-/** Links on a page (only inside the selection when there is one). */
-async function pageLinks(tabId, selectionOnly) {
-  const [result] = await chrome.scripting.executeScript({
-    target: { tabId },
-    args: [selectionOnly],
+function setupMenus() {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({ id: "meteor-link", title: "Download with Meteor", contexts: ["link", "video", "audio"] });
+    chrome.contextMenus.create({ id: "meteor-media", title: "Download this page's video with Meteor", contexts: ["page", "video"] });
+    chrome.contextMenus.create({ id: "meteor-all", title: "Download page links with Meteor", contexts: ["page", "selection"] });
+  });
+}
+chrome.runtime.onInstalled.addListener(setupMenus);
+async function pageLinks(tabId, selected = false) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId }, args: [selected],
     func: (onlySelected) => {
-      const anchors = [...document.querySelectorAll("a[href]")];
-      const sel = window.getSelection();
-      const keep = onlySelected && sel && sel.rangeCount ? anchors.filter((a) => sel.containsNode(a, true)) : anchors;
-      return keep.map((a) => a.href);
+      const selection = window.getSelection();
+      return [...document.querySelectorAll("a[href]")].filter((a) =>
+        !onlySelected || (selection?.rangeCount && selection.containsNode(a, true))
+      ).map((a) => a.href);
     },
   });
-  return (result && result.result) || [];
+  return results[0]?.result || [];
 }
-
-// ---- Audio and video seen on each tab ----
-
-async function mediaOf(tabId) {
-  const key = `media-${tabId}`;
-  return (await chrome.storage.session.get(key))[key] || [];
-}
-
-async function setMedia(tabId, list) {
-  await chrome.storage.session.set({ [`media-${tabId}`]: list });
-}
-
-// List changes run one after another, so two answers arriving together don't overwrite each other.
-let queue = Promise.resolve();
-function serial(fn) {
-  queue = queue.then(fn, fn);
-  return queue;
-}
-
-const checked = new Map(); // tab -> playlists already read on the current page
-
-async function tabTitle(tabId) {
-  try {
-    return (await chrome.tabs.get(tabId)).title || "";
-  } catch (_) {
-    return "";
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  const referrer = info.pageUrl || tab?.url || "";
+  if (info.menuItemId === "meteor-all" && tab?.id !== undefined) {
+    for (const url of await pageLinks(tab.id, !!info.selectionText)) await send(url, { referrer });
+  } else if (info.menuItemId === "meteor-media") {
+    await send(referrer, { referrer, site: true, browser: true });
+  } else if (info.menuItemId === "meteor-link") {
+    await send(info.linkUrl || info.srcUrl, { referrer, browser: true });
   }
-}
-
-/** Reads a streamed-video playlist once and lists it (best quality first), hiding the single-quality parts of it. */
-async function addStream(tabId, url) {
-  if (!checked.has(tabId)) checked.set(tabId, new Set());
-  const seen = checked.get(tabId);
-  if (seen.has(url)) return;
-  seen.add(url);
-  let text = "";
-  try {
-    text = await (await fetch(url, { credentials: "include" })).text();
-  } catch (_) {
-    return;
-  }
-  const s = summarizePlaylist(text, url);
-  if (!s.valid) return;
-  const name = titleToName(await tabTitle(tabId));
-  await serial(async () => {
-    let list = await mediaOf(tabId);
-    const hidden = new Set(list.flatMap((m) => m.variants || []));
-    if (hidden.has(url)) return; // one quality of a stream already listed
-    list = list.filter((m) => !s.variants.includes(m.url));
-    const item = {
-      url, kind: "stream", name: `${name}.mp4`, size: -1, height: s.height, variants: s.variants, protected: s.protected, live: s.live,
-    };
-    await setMedia(tabId, sortMedia(addMedia(list, item)));
-  });
-}
-
-/**
- * The tab a request belongs to. Players that load the video from a worker (common on streaming sites) make requests
- * that belong to no tab (tabId -1): those go to the tab showing the page that started them, or else the tab in front.
- */
-async function tabOf(d) {
-  if (d.tabId >= 0) return d.tabId;
-  const origin = originOf(d.initiator || d.documentUrl || d.originUrl || "");
-  if (!origin) return -1;
-  try {
-    const tabs = await chrome.tabs.query({});
-    const same = tabs.filter((t) => originOf(t.url || "") === origin);
-    const pick = same.find((t) => t.active) || same[0] || (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
-    return pick && pick.id !== undefined ? pick.id : -1;
-  } catch (_) {
-    return -1;
-  }
-}
-
-async function onMediaResponse(d) {
-    if (d.statusCode >= 400) return;
-    const type = header(d.responseHeaders, "content-type");
-    if ((d.type === "xmlhttprequest" || d.type === "other") && !mayBeMedia(d.url, type)) return; // most requests: cheap no
-    // On video sites the app's video engine saves the whole video, so the small pieces the player loads are skipped.
-    if (isVideoSite(d.initiator || d.documentUrl || d.originUrl || "")) return;
-    const tabId = await tabOf(d);
-    if (tabId < 0) return;
-    d = { ...d, tabId };
-    if (isStreamPlaylist(d.url, type)) return addStream(d.tabId, d.url);
-    const range = header(d.responseHeaders, "content-range");
-    const total = range.includes("/") ? Number(range.split("/").pop()) : Number(header(d.responseHeaders, "content-length") || -1);
-    if (!isMedia(d.url, type, Number.isFinite(total) ? total : -1)) return;
-    const item = { url: d.url, name: nameFromUrl(d.url), size: total > 0 ? total : -1, type: type.split(";")[0] };
-    await serial(async () => setMedia(d.tabId, sortMedia(addMedia(await mediaOf(d.tabId), item))));
-}
-
-// Players' own requests (media, object) and script requests (XHR, fetch, workers). Script requests are checked by
-// address and content type first, a cheap test, so streams served from addresses without a file extension are found
-// too; everything else returns at once.
-chrome.webRequest.onResponseStarted.addListener(onMediaResponse, { urls: ["<all_urls>"], types: ["media", "object"] }, ["responseHeaders"]);
-chrome.webRequest.onResponseStarted.addListener(onMediaResponse, { urls: ["<all_urls>"], types: ["xmlhttprequest", "other"] }, ["responseHeaders"]);
-
-chrome.tabs.onUpdated.addListener((tabId, change) => {
+});
+chrome.tabs.onUpdated.addListener((id, change) => {
   if (change.status === "loading" && change.url) {
-    checked.delete(tabId);
-    serial(() => setMedia(tabId, []));
+    for (const key of inspecting.keys()) if (key.startsWith(id + "|")) inspecting.delete(key);
+    serial(() => setMedia(id, [])).catch(() => {});
   }
 });
-chrome.tabs.onRemoved.addListener((tabId) => {
-  checked.delete(tabId);
-  chrome.storage.session.remove(`media-${tabId}`);
+chrome.tabs.onRemoved.addListener((id) => {
+  chrome.storage.session.remove("media-" + id).catch(() => {});
+  for (const key of inspecting.keys()) if (key.startsWith(id + "|")) inspecting.delete(key);
 });
-
-// ---- Messages from the popup and the page button ----
 
 chrome.runtime.onMessage.addListener((msg, sender, respond) => {
-  // A page's own script only ever speaks for its own tab; only the popup (no sender.tab) may name a tab.
-  const tabId = sender.tab ? sender.tab.id : msg.tabId;
-  const referrer = msg.referrer || (sender.tab && sender.tab.url) || "";
   const run = async () => {
-    switch (msg && msg.type) {
+    const tabId = sender.tab?.id ?? msg.tabId;
+    const referrer = msg.referrer || sender.tab?.url || "";
+    switch (msg.type) {
+      case "detected-media": {
+        // A page can only report URLs for its own tab; never trust caller-supplied tab IDs.
+        if (!sender.tab || !validTab(tabId) || !isWebLink(msg.url)) return { ok: false };
+        if (isStreamPlaylist(msg.url, msg.mime || "")) {
+          await inspectPlaylist(tabId, msg.url, { referrer });
+        } else if (isMedia(msg.url, msg.mime || "", -1)) {
+          await offer(tabId, { kind: "file", url: msg.url, name: nameFromUrl(msg.url), size: -1, referrer });
+        }
+        return { ok: true };
+      }
       case "send-link": {
-        // One link the user picked (video button, popup, page menu): the app shows its download window.
         const extra = { referrer, later: !!msg.later, browser: true };
         if (msg.stream) Object.assign(extra, { stream: true, fileName: msg.fileName });
         else if (msg.site) {
           Object.assign(extra, { site: true, audioOnly: !!msg.audioOnly });
           if (Number.isInteger(msg.maxHeight) && msg.maxHeight >= 100 && !msg.audioOnly) extra.maxHeight = msg.maxHeight;
-        }
-        else if (msg.fileName) extra.fileName = msg.fileName;
+        } else if (msg.fileName) extra.fileName = msg.fileName;
         return { ok: await send(msg.url, extra) };
       }
       case "send-links": {
         let sent = 0;
-        for (const url of msg.urls || []) if (await send(url, { referrer, later: !!msg.later })) sent++;
+        for (const url of (msg.urls || []).slice(0, 200)) if (await send(url, { referrer, later: !!msg.later })) sent++;
         return { ok: sent > 0, sent };
       }
-      case "media-list":
-        return { media: await mediaOf(tabId) };
-      case "page-links":
-        return { links: await pageLinks(tabId, false) };
+      case "media-list": return { media: validTab(tabId) ? await getMedia(tabId) : [] };
+      case "page-links": return { links: validTab(tabId) ? await pageLinks(tabId) : [] };
       case "video-button": {
-        // The page's own address when it is a plain file, otherwise what the tab has loaded.
-        const seen = (await mediaOf(tabId)).filter((m) => !m.protected);
-        if (/^https?:\/\//i.test(msg.src || "") && !seen.some((m) => m.url === msg.src)) {
-          seen.push({ url: msg.src, name: nameFromUrl(msg.src), size: -1 });
-        }
-        return { media: sortMedia(seen), locked: (await mediaOf(tabId)).some((m) => m.protected) };
+        const media = validTab(tabId) ? await getMedia(tabId) : [];
+        const found = media.filter((m) => !m.protected);
+        if (isWebLink(msg.src) && !found.some((m) => m.url === msg.src))
+          found.push({ url: msg.src, name: nameFromUrl(msg.src), size: -1 });
+        return { media: sortMedia(found), locked: media.some((m) => m.protected) };
       }
       case "ping": {
-        const r = await chrome.runtime.sendNativeMessage(HOST, { type: "ping" }).catch(() => null);
-        await showStatus(!!(r && r.ok));
-        return { ok: !!(r && r.ok), version: r && r.version };
+        const reply = await chrome.runtime.sendNativeMessage(HOST, { type: "ping" }).catch(() => null);
+        await showStatus(!!reply?.ok);
+        return { ok: !!reply?.ok, version: reply?.version };
       }
-      default:
-        return { ok: false };
+      default: return { ok: false };
     }
   };
   run().then(respond, () => respond({ ok: false }));
