@@ -203,6 +203,11 @@ public static class FFmpeg
         catch { return null; }
     }
 
+    /// <summary>Only audio-only MP4 files need a lossless conversion to an audio container.</summary>
+    public static bool NeedsAudioRemux(string filename, MediaInfo? media) =>
+        System.IO.Path.GetExtension(filename).Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+        && media is { HasAudio: true, HasVideo: false };
+
     /// <summary>Rebuild seekable audio output with stream copy (no re-encoding).</summary>
     public static bool RemuxAudio(string input, string output)
     {

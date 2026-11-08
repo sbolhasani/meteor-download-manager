@@ -100,3 +100,15 @@ public class MediaFormatSelectionTests
         Assert.NotNull(choices.SoundSize);
     }
 }
+
+public class DirectAudioContainerTests
+{
+    [Theory]
+    [InlineData("track.mp4", true, false, "aac", true)]
+    [InlineData("track.MP4", true, false, "aac", true)]
+    [InlineData("video.mp4", true, true, "aac", false)]
+    [InlineData("track.m4a", true, false, "aac", false)]
+    [InlineData("track.mp4", false, false, null, false)]
+    public void Remux_only_audio_inside_mp4(string name, bool audio, bool video, string? codec, bool shouldRemux) =>
+        Assert.Equal(shouldRemux, FFmpeg.NeedsAudioRemux(name, new FFmpeg.MediaInfo(video, audio, codec)));
+}

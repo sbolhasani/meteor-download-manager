@@ -127,7 +127,8 @@ async function onResponse(d) {
   const range = getHeader(d.responseHeaders, "content-range");
   const length = Number(range.match(/\/(\d+)\s*$/)?.[1] || getHeader(d.responseHeaders, "content-length") || -1);
   if (isMedia(d.url, mime, length)) await offer(tabId, {
-    kind: "file", url: d.url, name: nameFromUrl(d.url),
+    kind: "file", url: d.url, name: /^audio\//i.test(mime) && /\.mp4$/i.test(nameFromUrl(d.url))
+      ? nameFromUrl(d.url).replace(/\.mp4$/i, "") : nameFromUrl(d.url),
     size: length > 0 ? length : -1, type: mime.split(";")[0], referrer: context.referrer || "",
   });
 }
@@ -152,7 +153,9 @@ chrome.downloads.onCreated.addListener(async (item) => {
   }
   handled.set(key, now);
   const ok = await send(url, {
-    fileName: item.filename?.split(/[\\/]/).pop(),
+    fileName: /^audio\//i.test(item.mime || "") && /\.mp4$/i.test(item.filename || "")
+      ? item.filename.split(/[\\/]/).pop().replace(/\.mp4$/i, "")
+      : item.filename?.split(/[\\/]/).pop(),
     referrer: item.referrer || "", size: item.totalBytes > 0 ? item.totalBytes : undefined,
     browser: true,
   });

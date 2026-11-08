@@ -386,11 +386,36 @@ public sealed class Transfer : IDownloader
 
     void Complete(string target)
     {
-        if (Checksum.Parse(Record.Checksum) != null)
+        var hasChecksum = Checksum.Parse(Record.Checksum) != null;
+        if (hasChecksum)
         {
             Record.ChecksumResult = Checksum.Verify(Record.Checksum!, target);
             if (Record.ChecksumResult.Contains("does not match"))
                 Record.Error = "The checksum does not match: the file may be damaged or not the one expected";
+        }
+
+        // Direct HTTP downloads can also be audio-only MP4 (not HLS, not a site-engine job).
+        // Detect the actual contained tracks and copy audio losslessly to a seekable container.
+        // Never change files with a user-supplied checksum: it must refer to the original bytes.
+        if (!hasChecksum && System.IO.Path.GetExtension(target).Equals(".mp4", StringComparison.OrdinalIgnoreCase))
+        {
+            var media = FFmpeg.Probe(target);
+            if (FFmpeg.NeedsAudioRemux(target, media))
+            {
+                var output = FileNames.Unique(System.IO.Path.GetFileNameWithoutExtension(target) + media!.AudioExtension,
+                    System.IO.Path.GetDirectoryName(target)!);
+                if (FFmpeg.RemuxAudio(target, output))
+                {
+                    // Only discard the original after a nonempty, successful remux.
+                    try { File.Delete(target); } catch { }
+                    target = output;
+                }
+                else
+                {
+                    try { File.Delete(output); } catch { }
+                    Record.Error = "Audio was saved unchanged because lossless remux failed. Check FFmpeg.";
+                }
+            }
         }
         Record.SavedPath = target;
         Record.FileName = Path.GetFileName(target);

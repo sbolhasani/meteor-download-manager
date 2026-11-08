@@ -192,7 +192,7 @@ public static class DownloadWindows
             offered = found;
             // No video renditions: classify as audio automatically, regardless of host.
             // Do not override a user's manual quality selection.
-            if (found is { Video.Count: 0, SoundSize: not null } && !autoAudio && Chosen() == 0)
+            if (found is { Video.Count: 0 } && !autoAudio && Chosen() == 0)
             {
                 autoAudio = true;
                 FillQualities(-1);
@@ -253,7 +253,7 @@ public static class DownloadWindows
             // The extractor's pre-download ext describes its source, not necessarily
             // the final seekable container. Avoid advertising .mp4 for audio-only media.
             var choices = SiteVideo.ParseChoices(result.Item2);
-            name.Text = choices is { Video.Count: 0, SoundSize: not null }
+            name.Text = choices is { Video.Count: 0 }
                 ? FileNames.Sanitize(info.Title)
                 : FileNames.Sanitize($"{info.Title}.{info.Ext}");
         }
