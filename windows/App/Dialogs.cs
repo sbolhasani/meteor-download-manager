@@ -533,6 +533,10 @@ public static partial class Dialogs
         }
 
         var general = Tab("General");
+        general.Children.Add(new TextBlock { Text = "Appearance theme", Margin = new Thickness(0, 8, 0, 2) });
+        var themeNames = ThemeManager.Names;
+        var themePicker = new ComboBox { ItemsSource = themeNames, SelectedIndex = Math.Max(0, Array.IndexOf(themeNames, s.Theme)) };
+        general.Children.Add(themePicker);
         var conn = Box(general, "Connections per download (1-32)", s.Connections.ToString());
         var active = Box(general, "Downloads at the same time (main queue)", s.MaxActive.ToString());
         var folder = Box(general, "Save to folder", s.Folder);
@@ -711,6 +715,7 @@ public static partial class Dialogs
             s.Notifications = notify.IsChecked == true;
             s.CheckForUpdates = updates.IsChecked == true;
             s.Language = languageChoices[Math.Max(0, language.SelectedIndex)];
+            s.Theme = themeNames[Math.Max(0, themePicker.SelectedIndex)];
             s.ShowDownloadDialog = askDialog.IsChecked == true;
             s.ShowProgressWindow = progressWin.IsChecked == true;
             s.BringToFrontOnBrowserDownload = toFront.IsChecked == true;
@@ -742,6 +747,7 @@ public static partial class Dialogs
                 Key = apiKey.Text.Length >= 16 ? apiKey.Text : apiOn.IsChecked == true ? AutomationSettings.NewKey() : "",
             };
             m.ApplySettings(s);
+            ThemeManager.Apply(s.Theme);
             m.ApplyAutomation();
             f.Close();
         }, isDefault: true);

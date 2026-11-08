@@ -1,9 +1,60 @@
-# Builds build\win\ (app, browser helper, extension), the portable zip and the installer .exe.
+param([switch]$UsePrebuiltNative, [string]$PrebuiltNativePath, [switch]$SkipInstaller)
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 $version = (Get-Content VERSION).Trim()
-python scripts/build-torrent-native.py win-x64
-if ($LASTEXITCODE -ne 0) { throw "Native torrent engine build failed" }
+
+function Resolve-Torrent([string]$Source) {
+    if (-not $Source) { $Source = ".native-cache\sdk\win-x64" }
+    if (-not (Test-Path -LiteralPath $Source)) {
+        throw "No prebuilt native package at '$Source'. Supply a trusted Windows Portable ZIP via -PrebuiltNativePath."
+    }
+    $path = (Resolve-Path -LiteralPath $Source).Path
+    $item = Get-Item -LiteralPath $path
+    $archive = $null
+    if ($item.PSIsContainer) {
+        $root = $path
+    } elseif ($item.Extension -ieq ".zip") {
+        $archive = $path
+        $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+        $root = Join-Path ".native-cache\prebuilt-win-x64" $hash
+        $marker = Join-Path $root ".ready"
+        if (-not (Test-Path -LiteralPath $marker)) {
+            if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
+            New-Item -ItemType Directory -Path $root -Force | Out-Null
+            Expand-Archive -LiteralPath $archive -DestinationPath $root -Force
+            New-Item -ItemType File -Path $marker -Force | Out-Null
+        }
+    } else {
+        throw "-PrebuiltNativePath must be a Portable ZIP or extracted Portable/SDK directory."
+    }
+    $dlls = @(Get-ChildItem -LiteralPath $root -Filter "nexonic_torrent.dll" -File -Recurse)
+    if ($dlls.Count -ne 1) { throw "Expected exactly one nexonic_torrent.dll, found $($dlls.Count)." }
+    $dll = $dlls[0].FullName
+    $dllDir = Split-Path $dll
+    $sdkDir = Split-Path $dllDir
+    $licenses = @((Join-Path $root "torrent-licenses"), (Join-Path $root "notices"),
+                  (Join-Path $sdkDir "notices"), (Join-Path $dllDir "torrent-licenses")) |
+                Where-Object { Test-Path -LiteralPath $_ -PathType Container } | Select-Object -First 1
+    if (-not $licenses) { throw "Missing torrent license notices. Supply a complete Portable ZIP or SDK folder." }
+    $metadata = @((Join-Path $root "torrent-components.json"), (Join-Path $root "native-components.json"),
+                  (Join-Path $sdkDir "native-components.json"), (Join-Path $dllDir "torrent-components.json")) |
+                Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+    if ($metadata) {
+        $manifest = Get-Content -LiteralPath $metadata -Raw | ConvertFrom-Json
+        if ($manifest.target -and $manifest.target -ne "win-x64") { throw "Native target mismatch: $($manifest.target)" }
+    }
+    Write-Host "Native torrent DLL: $dll"
+    Write-Host "SHA-256: $((Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash)"
+    return @{ Dll = $dll; Licenses = $licenses; Metadata = $metadata; Archive = $archive }
+}
+if ($PrebuiltNativePath -and -not $UsePrebuiltNative) { throw "-PrebuiltNativePath requires -UsePrebuiltNative." }
+if ($UsePrebuiltNative) {
+    $native = Resolve-Torrent $PrebuiltNativePath
+} else {
+    python scripts/build-torrent-native.py win-x64
+    if ($LASTEXITCODE -ne 0) { throw "Native torrent engine build failed" }
+    $native = Resolve-Torrent ".native-cache\sdk\win-x64"
+}
 $out = "build\win"
 if (Test-Path build) { Remove-Item build -Recurse -Force }
 # The app and the browser helper (also the ndm command) share one .NET runtime in the app folder, as on Linux:
@@ -38,9 +89,19 @@ if (Test-Path .tools-cache\windows\yt-dlp\yt-dlp.exe) {
 } else {
   Write-Warning "No .tools-cache\windows\yt-dlp\yt-dlp.exe: videos from YouTube and other sites will not work in this build"
 }
-Copy-Item .native-cache\sdk\win-x64\bin\nexonic_torrent.dll $out
-Copy-Item .native-cache\sdk\win-x64\notices "$out\torrent-licenses" -Recurse
-Copy-Item .native-cache\sdk\win-x64\native-components.json "$out\torrent-components.json"
+Copy-Item -LiteralPath $native.Dll -Destination $out -Force
+Copy-Item -LiteralPath $native.Licenses -Destination "$out\torrent-licenses" -Recurse -Force
+if ($native.Metadata) {
+    Copy-Item -LiteralPath $native.Metadata -Destination "$out\torrent-components.json" -Force
+} else {
+    @{
+        engine = "libtorrent"
+        target = "win-x64"
+        origin = "prebuilt"
+        source = if ($native.Archive) { Split-Path -Leaf $native.Archive } else { "local portable directory" }
+        sha256 = (Get-FileHash -LiteralPath $native.Dll -Algorithm SHA256).Hash.ToLowerInvariant()
+    } | ConvertTo-Json | Set-Content -Path "$out\torrent-components.json" -Encoding UTF8
+}
 Copy-Item packaging\TERMS.txt $out
 python scripts\build-extensions.py
 if ($LASTEXITCODE -ne 0) { throw "Extension build failed" }
@@ -48,10 +109,16 @@ Copy-Item build\extension-chrome "$out\Extension" -Recurse
 Copy-Item "build\NexonicFirefoxAddon-$version.xpi" "$out\Firefox Add-on.xpi"
 # The ndm command runs the helper in command-line mode; the installer puts this folder on the user's PATH.
 Set-Content -Path "$out\ndm.cmd" -Value "@echo off`r`n`"%~dp0nexonic-host.exe`" %*" -Encoding ascii -NoNewline
-Compress-Archive -Path "$out\*" -DestinationPath "build\NexonicDownloadManager-$version-windows-portable.zip"
-$iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
-$env:NDM_VERSION = $version
-& $iscc windows\installer.iss
-if ($LASTEXITCODE -ne 0) { throw "Installer build failed" }
-Write-Host "Built build\NexonicDownloadManager-Setup-$version.exe and the portable zip"
+Compress-Archive -Path "$out\*" -DestinationPath "build\MeteorDownloadManager-$version-windows-portable.zip"
+if ($SkipInstaller) {
+    Write-Host "Built portable ZIP: build\MeteorDownloadManager-$version-windows-portable.zip"
+} else {
+    $iscc = Join-Path ([Environment]::GetFolderPath("ProgramFilesX86")) "Inno Setup 6\ISCC.exe"
+    if (-not (Test-Path -LiteralPath $iscc)) {
+        throw "Inno Setup 6 not installed. Use -SkipInstaller; the portable ZIP was already created."
+    }
+    $env:NDM_VERSION = $version
+    & $iscc windows\installer.iss
+    if ($LASTEXITCODE -ne 0) { throw "Installer build failed" }
+    Write-Host "Built Meteor Download Manager version $version installer and portable ZIP"
+}

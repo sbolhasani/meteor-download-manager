@@ -34,6 +34,7 @@ public partial class App : Application
         Directory.CreateDirectory(AppPaths.Support);
         RegisterBrowserHost();
         var manager = new DownloadManager();
+        ThemeManager.Apply(manager.Settings.Theme);
         L.Use(manager.Settings.Language);
         Translate.Install();
         window = new MainWindow(manager);
@@ -47,7 +48,7 @@ public partial class App : Application
         tray = new System.Windows.Forms.NotifyIcon
         {
             Icon = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!),
-            Text = "Nexonic Download Manager",
+            Text = "Meteor Download Manager",
             Visible = true,
         };
         tray.DoubleClick += (_, _) => ShowWindow();
@@ -59,6 +60,9 @@ public partial class App : Application
         menu.Items.Add(SpeedLimitMenu(manager));
         menu.Items.Add(L.T("Quit"), null, (_, _) => Quit(manager));
         tray.ContextMenuStrip = menu;
+        TrayTheme.Apply(menu);
+        menu.Opening += (_, _) => TrayTheme.Apply(menu);
+        ThemeManager.ThemeChanged += () => TrayTheme.Apply(menu);
         manager.Notify += (title, body) =>
         {
             if (manager.Settings.Notifications) tray.ShowBalloonTip(3000, title, body, System.Windows.Forms.ToolTipIcon.Info);

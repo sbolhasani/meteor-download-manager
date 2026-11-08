@@ -1,15 +1,59 @@
 <Window x:Class="Nexonic.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:Nexonic.App"
-        Title="Nexonic Download Manager" Width="1100" Height="620" MinWidth="760" MinHeight="420"
-        AllowDrop="True" Drop="OnDrop" DragOver="OnDragOver" Background="#F7F9FC">
+        Title="Meteor Download Manager" Width="1100" Height="620" MinWidth="760" MinHeight="420"
+        AllowDrop="True" Drop="OnDrop" DragOver="OnDragOver" Background="{DynamicResource WindowBrush}">
   <Window.Resources>
+    <!-- Search already has its outer border: do not use theme-specific TextBox borders or focus rings. -->
+    <Style x:Key="SearchTextBoxStyle" TargetType="{x:Type TextBox}">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="CaretBrush" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type TextBox}">
+            <ScrollViewer x:Name="PART_ContentHost" Background="Transparent"
+                          Focusable="False" Margin="0"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <!-- This style is always used for sidebar rows so theme templates cannot drop hierarchy indentation. -->
+    <Style x:Key="SidebarEntryStyle" TargetType="{x:Type ListBoxItem}">
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="MinHeight" Value="32"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type ListBoxItem}">
+            <Border x:Name="SidebarRow" Background="{TemplateBinding Background}" MinHeight="{TemplateBinding MinHeight}">
+              <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="SidebarRow" Property="Background" Value="{DynamicResource HoverBrush}"/>
+              </Trigger>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="SidebarRow" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
     <SolidColorBrush x:Key="Accent" Color="#1F6FEB" />
     <Style x:Key="ToolButton" TargetType="Button">
-      <Setter Property="Margin" Value="1,0" />
-      <Setter Property="Padding" Value="8,5" />
-      <Setter Property="MinWidth" Value="66" />
+      <!-- Shared toolbar dimensions are applied by MainWindow for every theme. -->
       <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="Foreground" Value="#1F2328" />
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
@@ -17,8 +61,8 @@
               <ContentPresenter HorizontalAlignment="Center" />
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bg" Property="Background" Value="#EAF1FD" /></Trigger>
-              <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bg" Property="Background" Value="#D6E4FB" /></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bg" Property="Background" Value="{DynamicResource HoverBrush}" /></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bg" Property="Background" Value="{DynamicResource SelectedBrush}" /></Trigger>
               <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4" /></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -26,11 +70,11 @@
       </Setter>
     </Style>
     <Style TargetType="DataGridColumnHeader">
-      <Setter Property="Background" Value="#F6F8FA" />
-      <Setter Property="Foreground" Value="#57606A" />
+      <Setter Property="Background" Value="{DynamicResource SidebarBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Padding" Value="8,6" />
-      <Setter Property="BorderBrush" Value="#E3E8EF" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushTheme}" />
       <Setter Property="BorderThickness" Value="0,0,1,1" />
     </Style>
     <Style TargetType="DataGridCell">
@@ -48,27 +92,21 @@
         </Setter.Value>
       </Setter>
     </Style>
-    <Style TargetType="DataGridRow">
-      <Setter Property="Background" Value="White" />
-      <Style.Triggers>
-        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#F3F7FE" /></Trigger>
-        <Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="#DCE8FC" /><Setter Property="Foreground" Value="#1F2328" /></Trigger>
-      </Style.Triggers>
-    </Style>
+
     <Style x:Key="Glyph" TargetType="TextBlock">
       <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
-      <Setter Property="FontSize" Value="22" />
-      <Setter Property="Foreground" Value="{StaticResource Accent}" />
+      <Setter Property="FontSize" Value="19" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
       <Setter Property="HorizontalAlignment" Value="Center" />
     </Style>
     <Style x:Key="Caption" TargetType="TextBlock">
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="Margin" Value="0,3,0,0" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="Margin" Value="0,1,0,0" />
       <Setter Property="HorizontalAlignment" Value="Center" />
     </Style>
   </Window.Resources>
   <DockPanel>
-    <Menu x:Name="MainMenu" DockPanel.Dock="Top" Background="White" Padding="4,2">
+    <Menu x:Name="MainMenu" DockPanel.Dock="Top" Foreground="{DynamicResource TextBrush}" Padding="4,2">
       <MenuItem Header="_Tasks">
         <MenuItem Header="_Add URL…" InputGestureText="Ctrl+N" Click="OnAdd" />
         <MenuItem Header="Add _Torrent…" InputGestureText="Ctrl+Shift+T" Click="OnTorrents" />
@@ -110,19 +148,31 @@
       </MenuItem>
       <MenuItem Header="_Help">
         <MenuItem Header="_Help" InputGestureText="F1" Click="OnHelp" />
-        <MenuItem Header="_About Nexonic Download Manager" Click="OnAbout" />
+        <MenuItem Header="_About Meteor Download Manager" Click="OnAbout" />
       </MenuItem>
     </Menu>
-    <Border DockPanel.Dock="Top" Background="White" BorderBrush="#E3E8EF" BorderThickness="0,0,0,1" Padding="6,4">
-      <WrapPanel>
-        <WrapPanel x:Name="Toolbar">
+    <Border DockPanel.Dock="Top" Background="{DynamicResource ToolbarBackgroundBrush}" BorderBrush="{DynamicResource BorderBrushTheme}" BorderThickness="0,0,0,1" Padding="6,3">
+      <DockPanel LastChildFill="True">
+        <Border DockPanel.Dock="Right" Margin="8,0,4,0" Width="200" Height="28" CornerRadius="6" BorderBrush="{DynamicResource BorderBrushTheme}" BorderThickness="1" Background="{DynamicResource SurfaceBrush}" VerticalAlignment="Center">
+          <Grid>
+            <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Foreground="{DynamicResource MutedBrush}" Margin="8,0,0,0" VerticalAlignment="Center" />
+            <TextBox x:Name="Search" Style="{StaticResource SearchTextBoxStyle}" BorderThickness="0" Background="Transparent" Margin="28,0,6,0" VerticalContentAlignment="Center" TextChanged="OnSearch" ToolTip="Search downloads (Ctrl+F)" />
+            <TextBlock x:Name="SearchHint" Text="Search downloads" Foreground="{DynamicResource MutedBrush}" Margin="31,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" />
+          </Grid>
+        </Border>
+        <Grid x:Name="ToolbarHost" ClipToBounds="True">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <StackPanel x:Name="Toolbar" Orientation="Horizontal" Grid.Column="0" HorizontalAlignment="Left">
         <Button Style="{StaticResource ToolButton}" Click="OnAdd" ToolTip="Add one or more links (Ctrl+N)">
           <StackPanel><TextBlock Style="{StaticResource Glyph}" Foreground="#2DA44E" Text="&#xE710;" /><TextBlock Style="{StaticResource Caption}" Text="Add URL" /></StackPanel>
         </Button>
         <Button Style="{StaticResource ToolButton}" Click="OnTorrents" ToolTip="Torrent Manager: add a .torrent file, torrent link or magnet">
           <StackPanel><TextBlock Style="{StaticResource Glyph}" Foreground="#6E40C9" Text="&#xE896;" /><TextBlock Style="{StaticResource Caption}" Text="Torrents" /></StackPanel>
         </Button>
-        <Border Width="1" Height="36" Background="#E3E8EF" Margin="6,0" VerticalAlignment="Center" />
+        <Border Width="1" Height="36" Background="{DynamicResource BorderBrushTheme}" Margin="6,0" VerticalAlignment="Center" />
         <Button x:Name="ResumeButton" Style="{StaticResource ToolButton}" Click="OnResume" ToolTip="Resume the selected downloads (Ctrl+R)">
           <StackPanel><TextBlock Style="{StaticResource Glyph}" Foreground="#1F6FEB" Text="&#xE768;" /><TextBlock Style="{StaticResource Caption}" Text="Resume" /></StackPanel>
         </Button>
@@ -132,7 +182,7 @@
         <Button Style="{StaticResource ToolButton}" Click="OnPauseAll" ToolTip="Stop every download">
           <StackPanel><TextBlock Style="{StaticResource Glyph}" Foreground="#CF222E" Text="&#xE71A;" /><TextBlock Style="{StaticResource Caption}" Text="Stop All" /></StackPanel>
         </Button>
-        <Border Width="1" Height="36" Background="#E3E8EF" Margin="6,0" VerticalAlignment="Center" />
+        <Border Width="1" Height="36" Background="{DynamicResource BorderBrushTheme}" Margin="6,0" VerticalAlignment="Center" />
         <Button Style="{StaticResource ToolButton}" Click="OnSelectAll" ToolTip="Select every download in this list (click again to deselect)">
           <StackPanel><TextBlock Style="{StaticResource Glyph}" Foreground="#0E9F9F" Text="&#xE762;" /><TextBlock Style="{StaticResource Caption}" Text="Select All" /></StackPanel>
         </Button>
@@ -142,7 +192,7 @@
         <Button Style="{StaticResource ToolButton}" Click="OnClear" ToolTip="Remove finished downloads from the list">
           <StackPanel><TextBlock Style="{StaticResource Glyph}" Foreground="#2DA44E" Text="&#xE73E;" /><TextBlock Style="{StaticResource Caption}" Text="Delete Completed" /></StackPanel>
         </Button>
-        <Border Width="1" Height="36" Background="#E3E8EF" Margin="6,0" VerticalAlignment="Center" />
+        <Border Width="1" Height="36" Background="{DynamicResource BorderBrushTheme}" Margin="6,0" VerticalAlignment="Center" />
         <Button Style="{StaticResource ToolButton}" Click="OnScheduler" ToolTip="Queues and timetables">
           <StackPanel><TextBlock Style="{StaticResource Glyph}" Foreground="#8250DF" Text="&#xE787;" /><TextBlock Style="{StaticResource Caption}" Text="Scheduler" /></StackPanel>
         </Button>
@@ -152,7 +202,7 @@
         <Button Style="{StaticResource ToolButton}" Click="OnStopQueue" ToolTip="Stop the selected queue">
           <StackPanel><TextBlock Style="{StaticResource Glyph}" Foreground="#DB2777" Text="&#xE71A;" /><TextBlock Style="{StaticResource Caption}" Text="Stop Queue" /></StackPanel>
         </Button>
-        <Border Width="1" Height="36" Background="#E3E8EF" Margin="6,0" VerticalAlignment="Center" />
+        <Border Width="1" Height="36" Background="{DynamicResource BorderBrushTheme}" Margin="6,0" VerticalAlignment="Center" />
         <Button Style="{StaticResource ToolButton}" Click="OnGrabber" ToolTip="Download files from a website section">
           <StackPanel><TextBlock Style="{StaticResource Glyph}" Foreground="#1F6FEB" Text="&#xE774;" /><TextBlock Style="{StaticResource Caption}" Text="Grabber" /></StackPanel>
         </Button>
@@ -162,39 +212,39 @@
         <Button Style="{StaticResource ToolButton}" Click="OnSettings" ToolTip="Options">
           <StackPanel><TextBlock Style="{StaticResource Glyph}" Foreground="#6E7781" Text="&#xE713;" /><TextBlock Style="{StaticResource Caption}" Text="Options" /></StackPanel>
         </Button>
-        </WrapPanel>
-        <Border Margin="12,6,4,6" Width="220" Height="30" CornerRadius="6" BorderBrush="#D0D7DE" BorderThickness="1" Background="White" VerticalAlignment="Center">
-          <Grid>
-            <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Foreground="#8B949E" Margin="8,0,0,0" VerticalAlignment="Center" />
-            <TextBox x:Name="Search" BorderThickness="0" Background="Transparent" Margin="28,0,6,0" VerticalContentAlignment="Center" TextChanged="OnSearch" ToolTip="Search downloads (Ctrl+F)" />
-            <TextBlock x:Name="SearchHint" Text="Search downloads" Foreground="#8B949E" Margin="31,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" />
-          </Grid>
-        </Border>
-      </WrapPanel>
+          </StackPanel>
+          <Button x:Name="ToolbarOverflowButton" Grid.Column="1" Visibility="Collapsed"
+                  Content="&#xE712;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                  ToolTip="More toolbar actions" Width="33" MinHeight="36"
+                  Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextBrush}"
+                  BorderBrush="{DynamicResource BorderBrushTheme}" BorderThickness="1" Margin="3,0,0,0"
+                  VerticalAlignment="Center" Click="OnToolbarOverflow" />
+        </Grid>
+      </DockPanel>
     </Border>
-    <Border DockPanel.Dock="Bottom" Background="#F6F8FA" BorderBrush="#E3E8EF" BorderThickness="0,1,0,0" Padding="12,4">
+    <Border DockPanel.Dock="Bottom" Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource BorderBrushTheme}" BorderThickness="0,1,0,0" Padding="12,4">
       <DockPanel>
-        <TextBlock x:Name="StatusRight" DockPanel.Dock="Right" Foreground="#57606A" FontSize="11" />
-        <TextBlock x:Name="StatusLeft" Foreground="#57606A" FontSize="11" />
+        <TextBlock x:Name="StatusRight" DockPanel.Dock="Right" Foreground="{DynamicResource MutedBrush}" FontSize="11" />
+        <TextBlock x:Name="StatusLeft" Foreground="{DynamicResource MutedBrush}" FontSize="11" />
       </DockPanel>
     </Border>
     <Grid>
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="200" MinWidth="150" />
+        <ColumnDefinition Width="265" MinWidth="230" />
         <ColumnDefinition Width="5" />
         <ColumnDefinition Width="*" />
       </Grid.ColumnDefinitions>
-      <ListBox x:Name="Sidebar" Grid.Column="0" BorderThickness="0" Background="#EEF2F7" SelectionChanged="OnFilter" Padding="0,6" />
-      <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="#E3E8EF" />
+      <ListBox x:Name="Sidebar" Grid.Column="0" Foreground="{DynamicResource TextBrush}" Background="{DynamicResource SidebarBrush}" BorderThickness="0" SelectionChanged="OnFilter" Padding="0,6" ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+      <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{DynamicResource BorderBrushTheme}" />
       <Grid Grid.Column="2">
         <Grid.RowDefinitions>
           <RowDefinition Height="*" />
           <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <DataGrid x:Name="Grid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended" HeadersVisibility="Column"
-                  MouseDoubleClick="OnRowDoubleClick" SelectionChanged="OnSelection" Background="White"
+                  MouseDoubleClick="OnRowDoubleClick" SelectionChanged="OnSelection" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextBrush}"
                   BorderThickness="0" RowHeight="30" CanUserReorderColumns="True" CanUserSortColumns="True"
-                  HorizontalGridLinesBrush="#EEF1F4" GridLinesVisibility="Horizontal">
+                  HorizontalGridLinesBrush="{DynamicResource BorderBrushTheme}" GridLinesVisibility="Horizontal">
           <DataGrid.ContextMenu>
             <ContextMenu>
               <MenuItem Header="Open" Click="OnOpen" />
@@ -227,7 +277,7 @@
             <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="80" />
             <DataGridTemplateColumn Header="Progress" Width="100">
               <DataGridTemplateColumn.CellTemplate>
-                <DataTemplate><ProgressBar Value="{Binding Percent, Mode=OneWay}" Height="10" Margin="4,0" Foreground="{StaticResource Accent}" /></DataTemplate>
+                <DataTemplate><ProgressBar Value="{Binding Percent, Mode=OneWay}" Height="10" Margin="4,0" Foreground="{DynamicResource AccentBrush}" /></DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
             <DataGridTextColumn Header="Speed" Binding="{Binding Speed}" Width="80" />
@@ -247,18 +297,18 @@
           </DataGrid.Columns>
         </DataGrid>
         <StackPanel x:Name="Empty" Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="Collapsed" MaxWidth="400">
-          <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="52" Foreground="{StaticResource Accent}" HorizontalAlignment="Center" />
+          <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="52" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" />
           <TextBlock x:Name="EmptyTitle" Text="No downloads here yet" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,12,0,6" />
-          <TextBlock Text="Click Add URL, paste a link, drop one on this window, or download from your browser with the extension." TextWrapping="Wrap" TextAlignment="Center" Foreground="#57606A" />
-          <Button Content="Add URL" Click="OnAdd" HorizontalAlignment="Center" Margin="0,14,0,0" Padding="18,6" Background="{StaticResource Accent}" Foreground="White" BorderThickness="0" Cursor="Hand" />
+          <TextBlock Text="Click Add URL, paste a link, drop one on this window, or download from your browser with the extension." TextWrapping="Wrap" TextAlignment="Center" Foreground="{DynamicResource MutedBrush}" />
+          <Button Content="Add URL" Click="OnAdd" HorizontalAlignment="Center" Margin="0,14,0,0" Padding="18,6" Background="{DynamicResource AccentBrush}" Foreground="White" BorderThickness="0" Cursor="Hand" />
         </StackPanel>
-        <Border x:Name="Details" Grid.Row="1" Background="White" BorderBrush="#E3E8EF" BorderThickness="0,1,0,0" Padding="12,8" Visibility="Collapsed">
+        <Border x:Name="Details" Grid.Row="1" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrushTheme}" BorderThickness="0,1,0,0" Padding="12,8" Visibility="Collapsed">
           <StackPanel>
-            <TextBlock x:Name="DetailName" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" />
-            <TextBox x:Name="DetailUrl" IsReadOnly="True" BorderThickness="0" Foreground="Gray" FontSize="11" Background="Transparent" />
+            <TextBlock x:Name="DetailName" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" />
+            <TextBox x:Name="DetailUrl" Style="{StaticResource SearchTextBoxStyle}" IsReadOnly="True" BorderThickness="0" Foreground="{DynamicResource MutedBrush}" FontSize="11" Background="Transparent" />
             <local:SegmentBar x:Name="Bar" Height="14" Margin="0,6" />
-            <TextBlock x:Name="DetailInfo" FontSize="11" TextWrapping="Wrap" />
-            <TextBlock x:Name="DetailError" FontSize="11" Foreground="#CF222E" TextWrapping="Wrap" />
+            <TextBlock x:Name="DetailInfo" Foreground="{DynamicResource TextBrush}" FontSize="11" TextWrapping="Wrap" />
+            <TextBlock x:Name="DetailError" FontSize="11" Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap" />
           </StackPanel>
         </Border>
       </Grid>

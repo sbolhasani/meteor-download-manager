@@ -141,7 +141,7 @@ public static class HelpWindows
         root.Children.Add(new ScrollViewer { Content = detail, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         var w = new Window
         {
-            Title = "Nexonic Download Manager Help", Owner = owner, Width = 860, Height = 560, MinWidth = 640, MinHeight = 400,
+            Title = "Meteor Download Manager Help", Owner = owner, Width = 860, Height = 560, MinWidth = 640, MinHeight = 400,
             WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = root, Icon = owner.Icon,
         };
         list.SelectedIndex = 0;
@@ -166,7 +166,7 @@ public static class HelpWindows
             RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
             p.Children.Add(image);
         }
-        p.Children.Add(new TextBlock { Text = "Nexonic Download Manager", FontSize = 20, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center });
+        p.Children.Add(new TextBlock { Text = "Meteor Download Manager", FontSize = 20, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center });
         p.Children.Add(new TextBlock { Text = $"Version {Version}", Foreground = Brushes.DimGray, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) });
         p.Children.Add(new TextBlock { Text = "Free, open-source download manager for Mac, Windows, Linux, Android, iPhone and iPad.", Foreground = Brushes.DimGray, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0) });
         var made = new TextBlock { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
@@ -183,7 +183,7 @@ public static class HelpWindows
         p.Children.Add(legal);
         var w = new Window
         {
-            Title = "About Nexonic Download Manager", Owner = owner, Width = 460, SizeToContent = SizeToContent.Height,
+            Title = "About Meteor Download Manager", Owner = owner, Width = 460, SizeToContent = SizeToContent.Height,
             ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner, Icon = owner.Icon,
         };
         var buttons = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 14, 0, 0) };

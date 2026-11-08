@@ -27,7 +27,7 @@ void StartApp()
     // Linux AppImage: start the AppImage itself (this helper's copy of it goes away when the helper exits).
     var appImage = OperatingSystem.IsLinux() ? Environment.GetEnvironmentVariable("APPIMAGE") : null;
     var app = appImage is { Length: > 0 } && File.Exists(appImage) ? appImage
-        : Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "NexonicDownloadManager.exe" : "NexonicDownloadManager");
+        : Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "MeteorDownloadManager.exe" : "NexonicDownloadManager");
     if (!File.Exists(app)) return;
     // The app is single-instance: a second start only wakes the running one, which then reads the inbox.
     try

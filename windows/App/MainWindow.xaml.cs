@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -14,6 +15,27 @@ public partial class MainWindow : Window
     readonly DownloadManager manager;
     string filter = "all";
     bool rebuilding;
+    bool updatingToolbarOverflow;
+    Button[] toolbarButtons = [];
+    UIElement[] toolbarElements = [];
+
+    // One geometry policy for Light, Dark, Slate and PaperGray.
+    const double ToolbarButtonMinWidth = 56;
+    const double ToolbarButtonMinHeight = 44;
+    static readonly Thickness ToolbarButtonPadding = new(4, 2, 4, 2);
+    static readonly Thickness ToolbarButtonMargin = new(1, 0, 1, 0);
+
+    static readonly FontFamily CategoryIconFont = new("Segoe Fluent Icons, Segoe MDL2 Assets");
+    static string IconFor(string key)
+    {
+        var category = key.StartsWith("cat:") ? key[4..] : key.StartsWith("ucat:") || key.StartsWith("fcat:") ? key[5..] : "";
+        return category switch
+        {
+            "Video" => "\uE714", "Music" => "\uE8D6", "Documents" => "\uE8A5",
+            "Programs" => "\uE8FC", "Compressed" => "\uE7B8", "Images" => "\uEB9F",
+            _ => key switch { "active" => "\uE768", "unfinished" => "\uE896", "finished" => "\uE73E", _ => "\uE8B7" },
+        };
+    }
 
     public MainWindow(DownloadManager manager)
     {
@@ -23,6 +45,8 @@ public partial class MainWindow : Window
         this.manager = manager;
         Grid.ItemsSource = manager.Rows;
         BuildSidebar();
+        ApplyThemeControlStyles();
+        ThemeManager.ThemeChanged += ApplyThemeControlStyles;
         manager.Queues.CollectionChanged += (_, _) => BuildSidebar();
         InputBindings.Add(new KeyBinding(new Cmd(() => OnAdd(this, new RoutedEventArgs())), Key.N, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(new Cmd(() => OnRemove(this, new RoutedEventArgs())), Key.Delete, ModifierKeys.None));
@@ -42,6 +66,10 @@ public partial class MainWindow : Window
         Shortcut(Key.L, ModifierKeys.Control | ModifierKeys.Shift, OnPlaylist);
         Shortcut(Key.L, ModifierKeys.Control, OnLibrary);
         VideoSubtitles.Enabled = manager.Settings.VideoSubtitles;
+        toolbarElements = Toolbar.Children.Cast<UIElement>().ToArray();
+        toolbarButtons = toolbarElements.OfType<Button>().ToArray();
+        ToolbarHost.SizeChanged += (_, _) => UpdateToolbarOverflow();
+        Loaded += (_, _) => UpdateToolbarOverflow();
         ApplyToolbar();
         UpdateButtons();
         UpdateStatus();
@@ -59,15 +87,136 @@ public partial class MainWindow : Window
         Hide();
     }
 
+    // Explicit styles in the main window override theme dictionaries; switch them deliberately.
+    void ApplyThemeControlStyles()
+    {
+        if (!IsInitialized) return;
+        bool paper = ThemeManager.CurrentTheme == "PaperGray";
+        var toolbarStyle = (Style)FindResource(paper ? "PaperGrayToolbarButtonStyle" : "ToolButton");
+        foreach (var button in Toolbar.Children.OfType<Button>())
+        {
+            button.Style = toolbarStyle;
+            button.MinWidth = ToolbarButtonMinWidth;
+            button.MinHeight = ToolbarButtonMinHeight;
+            button.Margin = ToolbarButtonMargin;
+            button.Padding = ToolbarButtonPadding;
+        }
+        Dispatcher.BeginInvoke(new Action(UpdateToolbarOverflow), System.Windows.Threading.DispatcherPriority.Loaded);
+        // Recreate rows to apply the PaperGray selection animations and padding-aware template.
+        BuildSidebar();
+    }
+
+    // Keep the search box visible. Any buttons that do not fit become genuine menu commands.
+    // A toolbar button's click handler remains the source of truth (including enabled state).
+    void UpdateToolbarOverflow()
+    {
+        if (updatingToolbarOverflow || toolbarElements.Length == 0 || ToolbarHost.ActualWidth <= 0)
+            return;
+
+        updatingToolbarOverflow = true;
+        try
+        {
+            if (!manager.Settings.ShowToolbar)
+            {
+                ToolbarOverflowButton.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            // Restoring all items before measuring handles both window growth and shrinking.
+            foreach (var element in toolbarElements)
+            {
+                element.Visibility = Visibility.Visible;
+                element.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            }
+
+            double TotalWidth() => toolbarElements.Where(element => element.Visibility == Visibility.Visible)
+                .Sum(element => element.DesiredSize.Width);
+            double available = ToolbarHost.ActualWidth;
+
+            if (TotalWidth() <= available)
+            {
+                ToolbarOverflowButton.Visibility = Visibility.Collapsed;
+                ToolbarOverflowButton.ContextMenu = null;
+                return;
+            }
+
+            ToolbarOverflowButton.Visibility = Visibility.Visible;
+            ToolbarOverflowButton.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            available = Math.Max(0, available - ToolbarOverflowButton.DesiredSize.Width);
+
+            // Keep the original ordering of actions. Hide the least prominent actions from
+            // the right-hand end first, without splitting a button's icon and caption.
+            foreach (var button in toolbarButtons.AsEnumerable().Reverse())
+            {
+                if (TotalWidth() <= available) break;
+                button.Visibility = Visibility.Collapsed;
+                UpdateToolbarSeparators();
+            }
+            UpdateToolbarSeparators();
+
+            var overflow = new ContextMenu
+            {
+                PlacementTarget = ToolbarOverflowButton,
+                Placement = PlacementMode.Bottom,
+            };
+            foreach (var button in toolbarButtons.Where(b => b.Visibility == Visibility.Collapsed))
+            {
+                var title = (button.Content as StackPanel)?.Children.OfType<TextBlock>().LastOrDefault()?.Text
+                            ?? button.ToolTip?.ToString() ?? "Action";
+                var item = new MenuItem { Header = title, IsEnabled = button.IsEnabled, ToolTip = button.ToolTip };
+                item.Click += (_, _) =>
+                {
+                    if (button.IsEnabled)
+                        button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, button));
+                };
+                overflow.Items.Add(item);
+            }
+            // Button enabled states change while downloads run: read them on each opening.
+            overflow.Opened += (_, _) =>
+            {
+                var hidden = toolbarButtons.Where(b => b.Visibility == Visibility.Collapsed).ToArray();
+                for (int i = 0; i < hidden.Length && i < overflow.Items.Count; i++)
+                    ((MenuItem)overflow.Items[i]).IsEnabled = hidden[i].IsEnabled;
+            };
+            ToolbarOverflowButton.ContextMenu = overflow;
+        }
+        finally { updatingToolbarOverflow = false; }
+    }
+
+    void UpdateToolbarSeparators()
+    {
+        for (int i = 0; i < toolbarElements.Length; i++)
+        {
+            if (toolbarElements[i] is not Border separator) continue;
+            int previous = i - 1;
+            while (previous >= 0 && toolbarElements[previous] is not Border) previous--;
+            int next = i + 1;
+            while (next < toolbarElements.Length && toolbarElements[next] is not Border) next++;
+            bool left = toolbarElements.Skip(previous + 1).Take(i - previous - 1)
+                .OfType<Button>().Any(b => b.Visibility == Visibility.Visible);
+            bool right = toolbarElements.Skip(i + 1).Take(next - i - 1)
+                .OfType<Button>().Any(b => b.Visibility == Visibility.Visible);
+            separator.Visibility = left && right ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    void OnToolbarOverflow(object sender, RoutedEventArgs e)
+    {
+        if (ToolbarOverflowButton.ContextMenu is { } menu)
+            menu.IsOpen = true;
+    }
+
     // ---- sidebar ----
 
     public void BuildSidebar()
     {
         rebuilding = true;
         Sidebar.Items.Clear();
+        var sidebarStyle = ThemeManager.CurrentTheme == "PaperGray"
+            ? (Style)FindResource(typeof(ListBoxItem)) : (Style)FindResource("SidebarEntryStyle");
         void Header(string text) => Sidebar.Items.Add(new ListBoxItem
         {
-            Content = text.ToUpperInvariant(), IsEnabled = false, FontSize = 11, FontWeight = FontWeights.SemiBold,
+            Content = text.ToUpperInvariant(), Style = sidebarStyle, IsEnabled = false, FontSize = 11, FontWeight = FontWeights.SemiBold,
             Foreground = Brushes.Gray, Margin = new Thickness(4, 8, 0, 2),
         });
         void Entry(string text, string key, int indent = 0)
@@ -76,8 +225,11 @@ public partial class MainWindow : Window
             var count = new TextBlock { Text = CountFor(key), Foreground = Brushes.Gray, FontSize = 11, Margin = new Thickness(8, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
             DockPanel.SetDock(count, Dock.Right);
             row.Children.Add(count);
+            row.Children.Add(new TextBlock { Text = IconFor(key), FontFamily = CategoryIconFont,
+                Width = 22, FontSize = 15, VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)Application.Current.FindResource("AccentBrush") });
             row.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center });
-            Sidebar.Items.Add(new ListBoxItem { Content = row, Tag = key, Padding = new Thickness(14 + indent * 16, 5, 4, 5), HorizontalContentAlignment = HorizontalAlignment.Stretch });
+            Sidebar.Items.Add(new ListBoxItem { Content = row, Tag = key, Style = sidebarStyle, Padding = new Thickness(14 + indent * 16, 6, 4, 6), MinHeight = 36, HorizontalContentAlignment = HorizontalAlignment.Stretch });
         }
         // Like IDM: each list opens into the file types it holds (sorted automatically by file type).
         static string Label(string c) => L.T(c == nameof(FileCategory.Other) ? "General" : c);
@@ -193,6 +345,7 @@ public partial class MainWindow : Window
         SubtitlesItem.IsChecked = manager.Settings.VideoSubtitles;
         foreach (var b in Toolbar.Children.OfType<Button>())
             if (b.Content is StackPanel p && p.Children.Count > 1) p.Children[1].Visibility = showNames ? Visibility.Visible : Visibility.Collapsed;
+        Dispatcher.BeginInvoke(new Action(UpdateToolbarOverflow), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     void OnToggleToolbar(object s, RoutedEventArgs e) { manager.Settings.ShowToolbar = ShowToolbarItem.IsChecked; manager.ApplySettings(manager.Settings); ApplyToolbar(); }

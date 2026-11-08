@@ -1,22 +1,22 @@
-; Builds NexonicDownloadManager-Setup-<version>.exe (per-user install, no admin rights needed).
+; Builds MeteorDownloadManager-Setup-<version>.exe (per-user install, no admin rights needed).
 #define Version GetEnv("NDM_VERSION")
 [Setup]
-AppId={{6F1C2E4B-8B7D-4C55-9E2A-3D9B1F0A7C21}
-AppName=Nexonic Download Manager
+AppId={{3C2B9F17-47B0-4C5A-B616-7B5648490D26}
+AppName=Meteor Download Manager
 AppVersion={#Version}
-AppPublisher=Shahrukh Khalid
-AppPublisherURL=https://www.shahrukhalid.com
-AppSupportURL=https://github.com/Shahrukhalid/nexonic-download-manager/issues
-AppUpdatesURL=https://github.com/Shahrukhalid/nexonic-download-manager/releases/latest
-AppCopyright=Copyright (c) 2026 Shahrukh Khalid. MIT OR Apache-2.0.
+AppPublisher=Meteor Download Manager contributors
+AppPublisherURL=https://github.com/sbolhasani/meteor-download-manager
+AppSupportURL=https://github.com/sbolhasani/meteor-download-manager/issues
+AppUpdatesURL=https://github.com/sbolhasani/meteor-download-manager/releases/latest
+AppCopyright=Copyright (c) 2026 original authors and Meteor contributors. MIT OR Apache-2.0.
 LicenseFile=..\packaging\TERMS.txt
-DefaultDirName={localappdata}\Programs\Nexonic Download Manager
-DefaultGroupName=Nexonic Download Manager
+DefaultDirName={localappdata}\Programs\Meteor Download Manager
+DefaultGroupName=Meteor Download Manager
 PrivilegesRequired=lowest
 OutputDir=..\build
-OutputBaseFilename=NexonicDownloadManager-Setup-{#Version}
+OutputBaseFilename=MeteorDownloadManager-Setup-{#Version}
 SetupIconFile=App\app.ico
-UninstallDisplayIcon={app}\NexonicDownloadManager.exe
+UninstallDisplayIcon={app}\MeteorDownloadManager.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -32,8 +32,8 @@ Type: filesandordirs; Name: "{app}\yt-dlp"
 Source: "..\build\win\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
 [Icons]
-Name: "{group}\Nexonic Download Manager"; Filename: "{app}\NexonicDownloadManager.exe"
-Name: "{userdesktop}\Nexonic Download Manager"; Filename: "{app}\NexonicDownloadManager.exe"; Tasks: desktopicon
+Name: "{group}\Meteor Download Manager"; Filename: "{app}\MeteorDownloadManager.exe"
+Name: "{userdesktop}\Meteor Download Manager"; Filename: "{app}\MeteorDownloadManager.exe"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"
@@ -42,14 +42,14 @@ Name: "addtopath"; Description: "Add the ndm command to the command line"
 [Registry]
 ; Open .torrent files and magnet links with the app. Another program's existing handler is never replaced: then the app
 ; only appears under "Open with".
-Root: HKCU; Subkey: "Software\Classes\NexonicDownloadManager.torrent"; ValueType: string; ValueData: "BitTorrent file"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\NexonicDownloadManager.torrent\DefaultIcon"; ValueType: string; ValueData: "{app}\NexonicDownloadManager.exe,0"
-Root: HKCU; Subkey: "Software\Classes\NexonicDownloadManager.torrent\shell\open\command"; ValueType: string; ValueData: """{app}\NexonicDownloadManager.exe"" ""%1"""
-Root: HKCU; Subkey: "Software\Classes\.torrent\OpenWithProgids"; ValueType: string; ValueName: "NexonicDownloadManager.torrent"; ValueData: ""; Flags: uninsdeletevalue
-Root: HKCU; Subkey: "Software\Classes\.torrent"; ValueType: string; ValueData: "NexonicDownloadManager.torrent"; Check: TorrentFree; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\MeteorDownloadManager.torrent"; ValueType: string; ValueData: "BitTorrent file"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\MeteorDownloadManager.torrent\DefaultIcon"; ValueType: string; ValueData: "{app}\MeteorDownloadManager.exe,0"
+Root: HKCU; Subkey: "Software\Classes\MeteorDownloadManager.torrent\shell\open\command"; ValueType: string; ValueData: """{app}\MeteorDownloadManager.exe"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\.torrent\OpenWithProgids"; ValueType: string; ValueName: "MeteorDownloadManager.torrent"; ValueData: ""; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.torrent"; ValueType: string; ValueData: "MeteorDownloadManager.torrent"; Check: TorrentFree; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Classes\magnet"; ValueType: string; ValueData: "URL:Magnet link"; Check: MagnetFree; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\magnet"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Check: MagnetFree
-Root: HKCU; Subkey: "Software\Classes\magnet\shell\open\command"; ValueType: string; ValueData: """{app}\NexonicDownloadManager.exe"" ""%1"""; Check: MagnetFree
+Root: HKCU; Subkey: "Software\Classes\magnet\shell\open\command"; ValueType: string; ValueData: """{app}\MeteorDownloadManager.exe"" ""%1"""; Check: MagnetFree
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath(ExpandConstant('{app}'))
 
 [Code]
@@ -63,10 +63,10 @@ var
 begin
   TorrentIsFree := True;
   if RegQueryStringValue(HKEY_CLASSES_ROOT, '.torrent', '', S) then
-    TorrentIsFree := (S = '') or (CompareText(S, 'NexonicDownloadManager.torrent') = 0);
+    TorrentIsFree := (S = '') or (CompareText(S, 'MeteorDownloadManager.torrent') = 0);
   MagnetIsFree := True;
   if RegQueryStringValue(HKEY_CLASSES_ROOT, 'magnet\shell\open\command', '', S) then
-    MagnetIsFree := (S = '') or (Pos('nexonicdownloadmanager', Lowercase(S)) > 0);
+    MagnetIsFree := (S = '') or (Pos('meteordownloadmanager', Lowercase(S)) > 0);
   Result := True;
 end;
 
@@ -93,9 +93,9 @@ begin
 end;
 
 [Run]
-Filename: "{app}\NexonicDownloadManager.exe"; Description: "Start Nexonic Download Manager"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\MeteorDownloadManager.exe"; Description: "Start Meteor Download Manager"; Flags: nowait postinstall skipifsilent
 ; In-app updates run the setup quietly: open the new version again afterwards.
-Filename: "{app}\NexonicDownloadManager.exe"; Flags: nowait runasoriginaluser; Check: WizardSilent
+Filename: "{app}\MeteorDownloadManager.exe"; Flags: nowait runasoriginaluser; Check: WizardSilent
 
 [Messages]
-FinishedLabel=Thank you for installing Nexonic Download Manager!%n%nMore tools and updates:%ngithub.com/Shahrukhalid%nwww.shahrukhalid.com
+FinishedLabel=Thank you for installing Meteor Download Manager!%n%nProject: github.com/sbolhasani/meteor-download-manager

@@ -4,7 +4,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
-    <AssemblyName>NexonicDownloadManager</AssemblyName>
+    <AssemblyName>MeteorDownloadManager</AssemblyName>
     <RootNamespace>Nexonic.App</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>

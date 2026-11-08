@@ -6,10 +6,10 @@ namespace Nexonic.Core;
 /// <summary>Finds out whether a newer version is published on GitHub Releases.</summary>
 public static class Updates
 {
-    public const string LatestUrl = "https://api.github.com/repos/Shahrukhalid/nexonic-download-manager/releases/latest";
+    public const string LatestUrl = "https://api.github.com/repos/sbolhasani/meteor-download-manager/releases/latest";
     /// <summary>The same details as a file attached to every release. Used when GitHub's API refuses (it allows 60
     /// checks an hour per network, which shared office and mobile networks use up).</summary>
-    public const string MirrorUrl = "https://github.com/Shahrukhalid/nexonic-download-manager/releases/latest/download/latest.json";
+    public const string MirrorUrl = "https://github.com/sbolhasani/meteor-download-manager/releases/latest/download/latest.json";
 
     public sealed record Release(string Version, string Notes, string Page, IReadOnlyDictionary<string, string> Assets,
         IReadOnlyDictionary<string, string>? Digests = null);
@@ -17,7 +17,7 @@ public static class Updates
     /// <summary>Only files attached to this app's own GitHub releases are ever downloaded as updates.</summary>
     public static bool TrustedAsset(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps && u.Host == "github.com"
-        && u.AbsolutePath.StartsWith("/Shahrukhalid/nexonic-download-manager/releases/download/", StringComparison.Ordinal);
+        && u.AbsolutePath.StartsWith("/sbolhasani/meteor-download-manager/releases/download/", StringComparison.Ordinal);
 
     /// <summary>The SHA-256 GitHub publishes for an attached file, or null.</summary>
     public static string? Digest(Release r, string asset) =>

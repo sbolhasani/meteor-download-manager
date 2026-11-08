@@ -34,7 +34,7 @@ public static class Updater
     static HttpClient Client()
     {
         var c = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-        c.DefaultRequestHeaders.UserAgent.ParseAdd("NexonicDownloadManager/" + HelpWindows.Version);
+        c.DefaultRequestHeaders.UserAgent.ParseAdd("MeteorDownloadManager/" + HelpWindows.Version);
         c.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         return c;
     }
@@ -68,7 +68,7 @@ public static class Updater
         }
         if (!Updates.IsNewer(release.Version, current))
         {
-            if (manual) MessageBox.Show($"Nexonic Download Manager {current} is the newest version.", "You're up to date");
+            if (manual) MessageBox.Show($"Meteor Download Manager {current} is the newest version.", "You're up to date");
             return;
         }
         if (!manual && manager.Settings.SkippedVersion == release.Version) return;
@@ -94,7 +94,7 @@ public static class Updater
             WindowStartupLocation = WindowStartupLocation.CenterScreen, Topmost = true,
         };
         var root = new StackPanel { Margin = new Thickness(18) };
-        root.Children.Add(new TextBlock { Text = "A new version of Nexonic Download Manager is available", FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        root.Children.Add(new TextBlock { Text = "A new version of Meteor Download Manager is available", FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         root.Children.Add(new TextBlock { Text = $"Version {r.Version} is ready to install. You have {current}.", Margin = new Thickness(0, 6, 0, 10) });
         root.Children.Add(new TextBlock { Text = "What's new:", FontWeight = FontWeights.SemiBold });
         var notes = Updates.Notes(r.Notes, current);
@@ -125,7 +125,7 @@ public static class Updater
     /// </summary>
     static async Task Install(Updates.Release r)
     {
-        const string asset = "NexonicDownloadManager-Windows-Setup.exe";
+        const string asset = "MeteorDownloadManager-Windows-Setup.exe";
         var installed = File.Exists(Path.Combine(AppContext.BaseDirectory, "unins000.exe"));
         // Only this app's own release file, and only when GitHub tells us its checksum; otherwise the release page.
         if (!installed || !r.Assets.TryGetValue(asset, out var url) || !Updates.TrustedAsset(url) || Updates.Digest(r, asset) is not { } digest)
@@ -135,7 +135,7 @@ public static class Updater
         }
         var progress = new Window
         {
-            Title = "Updating Nexonic Download Manager", Width = 360, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
+            Title = "Updating Meteor Download Manager", Width = 360, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
             WindowStartupLocation = WindowStartupLocation.CenterScreen, Topmost = true,
             Content = new StackPanel
             {
@@ -151,7 +151,7 @@ public static class Updater
         progressWindow = progress;
         progress.Closing += (_, e) => { if (installing && progress.IsVisible && !closingProgress) e.Cancel = true; };  // stays until the download ends
         progress.Show();
-        var file = Path.Combine(Path.GetTempPath(), $"NexonicDownloadManager-{r.Version}-Setup.exe");
+        var file = Path.Combine(Path.GetTempPath(), $"MeteorDownloadManager-{r.Version}-Setup.exe");
         try
         {
             using var c = Client();
