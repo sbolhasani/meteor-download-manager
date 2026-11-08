@@ -162,6 +162,15 @@ export function originOf(url) {
   }
 }
 
+/** Initialization fragments are components of a stream, not standalone videos. */
+export function isStreamInitialization(url) {
+  if (!isWebLink(url)) return false;
+  try {
+    const name = decodeURIComponent(new URL(url).pathname.split("/").pop() || "").toLowerCase();
+    return /^(?:init|initialization)(?:[-_.][a-z0-9-]+)?\.(?:mp4|m4a|m4s)$/.test(name);
+  } catch { return false; }
+}
+
 export function isStreamPlaylist(url, contentType) {
   if (!/^https?:\/\//i.test(url || "")) return false;
   return extensionOf(url) === "m3u8" || /mpegurl/i.test(String(contentType || ""));

@@ -212,6 +212,10 @@ public sealed class StreamTransfer : IDownloader
             throw new HLS.Failure("Cannot inspect HLS media. FFmpeg is required to finalize this stream.");
 
         var audioOnly = joined.Count == 1 && info.HasAudio && !info.HasVideo;
+        Record.VideoStep = audioOnly
+            ? $"Audio-only {info.AudioCodec ?? "unknown"} detected; finalizing without quality loss…"
+            : info.HasVideo ? "Video detected; finalizing container…" : "Inspecting media container…";
+        Notify(true);
         var folder = Record.Folder;
         if (sortIntoCategories)
             folder = Path.Combine(folder, (audioOnly ? FileCategory.Music : FileCategory.Video).ToString());
@@ -250,6 +254,7 @@ public sealed class StreamTransfer : IDownloader
         Record.FileName = Path.GetFileName(saved);
         Record.Size = new FileInfo(saved).Length;
         Record.Status = DownloadStatus.Finished;
+        Record.VideoStep = null;
         Record.Finished = DateTime.Now;
         Notify(true);
         http.Dispose();

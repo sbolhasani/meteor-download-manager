@@ -2,7 +2,7 @@
 // The Chrome IDM extension is a functional reference, not a runtime dependency.
 import {
   HOST, DEFAULTS, TROUBLESHOOT, addMedia, cookieHeader, header, isMedia,
-  isStreamPlaylist, isVideoSite, isWebLink, mayBeMedia, nameFromUrl,
+  isStreamInitialization, isStreamPlaylist, isVideoSite, isWebLink, mayBeMedia, nameFromUrl,
   originOf, shouldTakeOver, sortMedia, summarizePlaylist, titleToName, downloadKey,
 } from "./helpers.js";
 
@@ -126,6 +126,7 @@ async function onResponse(d) {
   }
   const range = getHeader(d.responseHeaders, "content-range");
   const length = Number(range.match(/\/(\d+)\s*$/)?.[1] || getHeader(d.responseHeaders, "content-length") || -1);
+  if (isStreamInitialization(d.url)) return; // An HLS init fragment is not a standalone media download.
   if (isMedia(d.url, mime, length)) await offer(tabId, {
     kind: "file", url: d.url, name: /^audio\//i.test(mime) && /\.mp4$/i.test(nameFromUrl(d.url))
       ? nameFromUrl(d.url).replace(/\.mp4$/i, "") : nameFromUrl(d.url),
@@ -219,7 +220,7 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
         if (!sender.tab || !validTab(tabId) || !isWebLink(msg.url)) return { ok: false };
         if (isStreamPlaylist(msg.url, msg.mime || "")) {
           await inspectPlaylist(tabId, msg.url, { referrer });
-        } else if (isMedia(msg.url, msg.mime || "", -1)) {
+        } else if (!isStreamInitialization(msg.url) && isMedia(msg.url, msg.mime || "", -1)) {
           await offer(tabId, { kind: "file", url: msg.url, name: nameFromUrl(msg.url), size: -1, referrer });
         }
         return { ok: true };

@@ -55,7 +55,7 @@ test("small helpers", () => {
   assert.deepEqual(addMedia(list, { url: "a" }).map((m) => m.url), ["a", "b"]);
 });
 
-import { isStreamPlaylist, qualityLabel, sortMedia, summarizePlaylist, titleToName } from "./helpers.js";
+import { isStreamInitialization, isStreamPlaylist, qualityLabel, sortMedia, summarizePlaylist, titleToName } from "./helpers.js";
 
 test("stream playlists", () => {
   assert.equal(isStreamPlaylist("https://e.com/v/master.m3u8?t=1", ""), true);
@@ -124,4 +124,13 @@ test("origins", () => {
   assert.equal(originOf("https://e.com/a/b?c"), "https://e.com");
   assert.equal(originOf("chrome://settings"), "");
   assert.equal(originOf("nope"), "");
+});
+
+test("HLS initialization fragments do not appear as downloadable videos", () => {
+  assert.equal(isStreamInitialization("https://playback.example/hls/init.mp4?token=x"), true);
+  assert.equal(isStreamInitialization("https://cdn.example/audio/initialization.m4a"), true);
+  assert.equal(isStreamInitialization("https://cdn.example/audio/init-1.m4s"), true);
+  assert.equal(isStreamInitialization("https://cdn.example/movie.mp4"), false);
+  assert.equal(isStreamInitialization("https://cdn.example/start.mp4"), false);
+  assert.equal(isStreamInitialization("blob:https://cdn.example/init.mp4"), false);
 });
