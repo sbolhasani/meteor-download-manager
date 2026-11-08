@@ -75,3 +75,15 @@ public class HlsAudioFormatTests
         Assert.True(video.HasVideo);
     }
 }
+
+public class HlsPendingNameTests
+{
+    [Theory]
+    [InlineData("Track.mp4", "Track")]
+    [InlineData("master.m3u8", "master")]
+    [InlineData("Track", "Track")]
+    [InlineData("My.Track", "My.Track")]
+    [InlineData("Track.m4a", "Track.m4a")]
+    public void Hls_name_does_not_claim_mp4_before_probe(string input, string expected) =>
+        Assert.Equal(expected, HLS.PendingFileName(input));
+}

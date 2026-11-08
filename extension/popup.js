@@ -91,7 +91,7 @@ if (tab) {
       const r = await ask(msg);
       b.textContent = r && r.ok ? "Sent" : "Failed";
     };
-    const li = item(m.url, `${m.name} · ${qualityLabel(m)}`, document.createTextNode(""));
+    const li = item(m.url, `${m.name} · ${qualityLabel(m)}${m.kind === "stream" ? " · format detected after download" : ""}`, document.createTextNode(""));
     li.append(b);
     $("media").append(li);
   }

@@ -87,7 +87,7 @@
     const media = response?.media || [];
     if (media.length === 1) return send(media[0]);
     if (!media.length) entry(response?.locked ? "This media is protected." : "Play the video, then try again.", null, true);
-    for (const m of media) entry(m.name + (m.height ? " · " + m.height + "p" : "") + (m.live ? " · live" : ""), () => send(m));
+    for (const m of media) entry(m.name + (m.height ? " · " + m.height + "p" : "") + (m.live ? " · live" : "") + (m.kind === "stream" ? " · format pending" : ""), () => send(m));
     menu.hidden = false;
   });
   document.addEventListener("mouseover", (event) => {

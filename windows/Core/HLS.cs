@@ -108,6 +108,14 @@ public static class HLS
     public static Variant? Best(IEnumerable<Variant> variants) =>
         variants.OrderByDescending(v => v.Pixels).ThenByDescending(v => v.Bandwidth).FirstOrDefault();
 
+    /// <summary>Never promise an MP4 container before the HLS tracks have been probed.</summary>
+    public static string PendingFileName(string fileName)
+    {
+        var ext = System.IO.Path.GetExtension(fileName);
+        return ext.Equals(".m3u8", StringComparison.OrdinalIgnoreCase) || ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+            ? System.IO.Path.GetFileNameWithoutExtension(fileName) : fileName;
+    }
+
     public static bool IsPlaylistUrl(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var u) && u.AbsolutePath.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase);
 }

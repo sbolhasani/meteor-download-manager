@@ -51,7 +51,8 @@ public static class DownloadWindows
         job = job with { Url = Links.Unwrap(job.Url) };  // e.g. a Google Images result: the picture itself
         if (infoWindows.TryGetValue(job.Url, out var open)) { open.Activate(); return; }
         var uri = new Uri(job.Url);
-        var site = job.Site == true || Nexonic.Core.SiteVideo.IsSupported(job.Url);
+        var site = job.Stream != true && (job.Site == true || Nexonic.Core.SiteVideo.IsSupported(job.Url));
+        var stream = !site && (job.Stream == true || HLS.IsPlaylistUrl(job.Url));
         var w = new Window
         {
             Title = "Download File Info", Width = 560, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
@@ -63,7 +64,8 @@ public static class DownloadWindows
         var head = new DockPanel();
         var name = new TextBox
         {
-            Text = job.FileName is { Length: > 0 } n ? FileNames.Sanitize(n) : site ? $"Video from {uri.Host}" : FileNames.FromUrl(job.Url),
+            Text = stream ? HLS.PendingFileName(job.FileName is { Length: > 0 } n ? FileNames.Sanitize(n) : FileNames.FromUrl(job.Url))
+                : job.FileName is { Length: > 0 } n ? FileNames.Sanitize(n) : site ? $"Video from {uri.Host}" : FileNames.FromUrl(job.Url),
             FontSize = 15, FontWeight = FontWeights.SemiBold, Padding = new Thickness(4, 3, 4, 3),
         };
         var icon = new Image { Width = 40, Height = 40, Margin = new Thickness(0, 0, 12, 0), Source = FileIcon.For(name.Text) };
@@ -92,9 +94,10 @@ public static class DownloadWindows
         }
         var size = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Text = job.Size is long s ? Nexonic.App.Row.Bytes(s) : site ? "Finding the qualities on offer…" : "Checking…" };
         AddRow("Size", size);
-        var category = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Text = FileCategories.Of(name.Text).ToString() };
+        var category = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Text = stream ? "Detecting after download" : FileCategories.Of(name.Text).ToString() };
         AddRow("Category", category);
-        name.TextChanged += (_, _) => { category.Text = FileCategories.Of(name.Text).ToString(); icon.Source = FileIcon.For(name.Text); };
+        name.TextChanged += (_, _) => { category.Text = stream ? "Detecting after download" : FileCategories.Of(name.Text).ToString(); icon.Source = FileIcon.For(name.Text); };
+        if (stream) AddRow("Output format", new TextBlock { Text = "Automatically detected from audio/video streams", VerticalAlignment = VerticalAlignment.Center });
         var folder = new TextBox { Text = m.Settings.Folder, Padding = new Thickness(4, 3, 4, 3) };
         var pick = new Button { Content = "Choose…", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(6, 0, 0, 0) };
         pick.Click += (_, _) =>
@@ -433,8 +436,8 @@ public static class DownloadWindows
             if (!plain)
             {
                 segCaption.Text = r.SiteVideo == true
-                    ? ("Video site · " + SiteVideo.ChoiceText(r.AudioOnly, r.MaxHeight) + ", picture and sound joined") + $"\nSave to: {r.Folder}"
-                    : r.IsStream == true ? $"Streamed video · pieces: {r.StreamDone ?? 0} of {r.StreamTotal ?? 0}, joined into one .mp4" : "";
+                    ? ("Media site · " + SiteVideo.ChoiceText(r.AudioOnly, r.MaxHeight)) + $"\nSave to: {r.Folder}"
+                    : r.IsStream == true ? $"HLS media · pieces: {r.StreamDone ?? 0} of {r.StreamTotal ?? 0} · format detected automatically" : "";
                 segCaption.Visibility = segCaption.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
                 return;
             }

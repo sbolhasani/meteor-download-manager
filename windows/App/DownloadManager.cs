@@ -115,7 +115,7 @@ public sealed partial class DownloadManager
         var site = job.Site == true || (Nexonic.Core.SiteVideo.IsSupported(job.Url) && job.Stream != true);
         var stream = !site && (job.Stream == true || HLS.IsPlaylistUrl(job.Url));
         var name = job.FileName is { Length: > 0 } n ? FileNames.Sanitize(n) : FileNames.FromUrl(job.Url);
-        if (stream) name = Path.GetFileNameWithoutExtension(name) + ".mp4";
+        if (stream) name = HLS.PendingFileName(name);
         if (site && string.IsNullOrEmpty(job.FileName)) name = $"Video from {new Uri(job.Url).Host}";
         // A link the user asked to refresh: keep what is downloaded and continue from the new address.
         if (Rows.FirstOrDefault(r => r.Record.AwaitingRefresh == true && r.Record.FileName == name) is { } waiting)

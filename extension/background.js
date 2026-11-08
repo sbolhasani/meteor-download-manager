@@ -107,7 +107,7 @@ async function inspectPlaylist(tabId, url, context) {
   const list = await getMedia(tabId);
   if (list.some((m) => (m.variants || []).includes(url))) return;
   await offer(tabId, {
-    kind: "stream", url, name: title + ".mp4", height: summary.height, size: -1,
+    kind: "stream", url, name: title, height: summary.height, size: -1,
     variants: summary.variants, protected: summary.protected, live: summary.live,
     unverified: !!summary.unverified, referrer: context.referrer || "",
   });
