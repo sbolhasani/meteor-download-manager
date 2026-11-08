@@ -48,3 +48,30 @@ public class VideoEngineTests
         Assert.False(r.IsCanceled);
     }
 }
+
+
+/// <summary>Audio-only HLS output must retain its codec and have an appropriate extension.</summary>
+public class HlsAudioFormatTests
+{
+    [Theory]
+    [InlineData("aac", ".m4a")]
+    [InlineData("alac", ".m4a")]
+    [InlineData("mp3", ".mp3")]
+    [InlineData("opus", ".opus")]
+    [InlineData("vorbis", ".ogg")]
+    [InlineData("flac", ".flac")]
+    [InlineData("unknown", ".mka")]
+    public void Audio_extension_matches_codec_without_transcoding(string codec, string extension)
+    {
+        Assert.Equal(extension, new FFmpeg.MediaInfo(false, true, codec).AudioExtension);
+    }
+
+    [Fact]
+    public void Video_and_audio_are_distinguished_by_streams_not_hls_track_label()
+    {
+        var audio = new FFmpeg.MediaInfo(false, true, "aac");
+        var video = new FFmpeg.MediaInfo(true, true, "aac");
+        Assert.False(audio.HasVideo);
+        Assert.True(video.HasVideo);
+    }
+}

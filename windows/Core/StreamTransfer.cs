@@ -204,25 +204,47 @@ public sealed class StreamTransfer : IDownloader
 
     void Finish(List<(string Name, HLS.Media Media, string File)> joined)
     {
+        var first = joined[0];
+        // A single HLS rendition (including SoundCloud's fMP4) can be audio-only.
+        // Inspect actual streams; track labels and URL extensions are not reliable.
+        var info = FFmpeg.Probe(first.File);
+        if (info == null)
+            throw new HLS.Failure("Cannot inspect HLS media. FFmpeg is required to finalize this stream.");
+
+        var audioOnly = joined.Count == 1 && info.HasAudio && !info.HasVideo;
         var folder = Record.Folder;
-        if (sortIntoCategories) folder = Path.Combine(folder, FileCategory.Video.ToString());
+        if (sortIntoCategories)
+            folder = Path.Combine(folder, (audioOnly ? FileCategory.Music : FileCategory.Video).ToString());
         Directory.CreateDirectory(folder);
         var baseName = Path.GetFileNameWithoutExtension(Record.FileName);
-        var mp4 = FileNames.Unique(baseName + ".mp4", folder);
         string saved;
-        var first = joined[0];
-        if ((joined.Count > 1 || Ext(first.Name, first.Media) != ".mp4") && FFmpeg.Mux(joined.Select(j => j.File).ToList(), mp4))
-            saved = mp4;
+        if (audioOnly)
+        {
+            // Always remux — even a single fragmented-MP4 rendition needs a seekable index.
+            // Stream copy preserves the exact source audio codec and quality.
+            var output = FileNames.Unique(baseName + info.AudioExtension, folder);
+            if (!FFmpeg.RemuxAudio(first.File, output))
+            {
+                try { File.Delete(output); } catch { }
+                throw new HLS.Failure("Could not finalize the HLS audio without re-encoding. Original pieces were retained.");
+            }
+            saved = output;
+        }
         else
         {
-            saved = FileNames.Unique(baseName + Ext(first.Name, first.Media), folder);
-            File.Move(first.File, saved);
-            if (joined.Count > 1)
+            if (!info.HasVideo)
+                throw new HLS.Failure("The downloaded HLS playlist contains no playable video or audio.");
+            var output = FileNames.Unique(baseName + ".mp4", folder);
+            // Always remux fMP4 so the output has a valid index and can seek.
+            // For multiple tracks, the original mux logic still joins picture and sound.
+            if (!FFmpeg.Mux(joined.Select(j => j.File).ToList(), output))
             {
-                File.Move(joined[1].File, FileNames.Unique(baseName + " (sound)" + Ext(joined[1].Name, joined[1].Media), folder));
-                Record.Error = "Picture and sound were saved as two files.";
+                try { File.Delete(output); } catch { }
+                throw new HLS.Failure("Could not finalize the HLS video without re-encoding. Original pieces were retained.");
             }
+            saved = output;
         }
+
         try { Directory.Delete(PartsFolder, true); } catch { }
         Record.SavedPath = saved;
         Record.FileName = Path.GetFileName(saved);

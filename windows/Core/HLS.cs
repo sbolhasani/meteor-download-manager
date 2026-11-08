@@ -126,6 +126,103 @@ public static class FFmpeg
         }
     }
 
+    public sealed record MediaInfo(bool HasVideo, bool HasAudio, string? AudioCodec)
+    {
+        /// <summary>Use the original encoded audio without quality loss, in an appropriate seekable container.</summary>
+        public string AudioExtension => AudioCodec?.ToLowerInvariant() switch
+        {
+            "aac" or "alac" => ".m4a",
+            "mp3" => ".mp3",
+            "opus" => ".opus",
+            "vorbis" => ".ogg",
+            "flac" => ".flac",
+            _ => ".mka",
+        };
+    }
+
+    /// <summary>Probe joined HLS fragments rather than guessing whether an audio-only stream is video.</summary>
+    public static MediaInfo? Probe(string input)
+    {
+        if (Path is not { } ffmpeg) return null;
+        try
+        {
+            var probe = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ffmpeg)!, OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe");
+            if (File.Exists(probe))
+            {
+                var psi = new ProcessStartInfo(probe)
+                {
+                    CreateNoWindow = true, UseShellExecute = false,
+                    RedirectStandardOutput = true, RedirectStandardError = true,
+                };
+                foreach (var a in new[] { "-v", "error", "-show_entries", "stream=codec_type,codec_name", "-of", "json", input })
+                    psi.ArgumentList.Add(a);
+                using var p = Process.Start(psi)!;
+                var output = p.StandardOutput.ReadToEnd();
+                p.StandardError.ReadToEnd();
+                p.WaitForExit();
+                if (p.ExitCode == 0)
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(output);
+                    var streams = doc.RootElement.GetProperty("streams").EnumerateArray().ToArray();
+                    var video = streams.Any(s => s.TryGetProperty("codec_type", out var t) && t.GetString() == "video");
+                    var audio = streams.FirstOrDefault(s => s.TryGetProperty("codec_type", out var t) && t.GetString() == "audio");
+                    if (video || audio.ValueKind != System.Text.Json.JsonValueKind.Undefined)
+                    {
+                        var codec = audio.ValueKind != System.Text.Json.JsonValueKind.Undefined &&
+                            audio.TryGetProperty("codec_name", out var n) ? n.GetString() : null;
+                        return new MediaInfo(video, audio.ValueKind != System.Text.Json.JsonValueKind.Undefined, codec);
+                    }
+                }
+            }
+
+            // ffprobe is optional in older installs; ffmpeg itself prints stream metadata without transcoding.
+            var fallback = new ProcessStartInfo(ffmpeg)
+            {
+                CreateNoWindow = true, UseShellExecute = false,
+                RedirectStandardOutput = true, RedirectStandardError = true,
+            };
+            foreach (var a in new[] { "-hide_banner", "-i", input }) fallback.ArgumentList.Add(a);
+            using var process = Process.Start(fallback)!;
+            process.StandardOutput.ReadToEnd();
+            var report = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            var hasVideo = System.Text.RegularExpressions.Regex.IsMatch(report, @"Stream #\d+:\d+(?:\[[^\]]+\])?(?:\([^)]*\))?: Video:");
+            var audioMatch = System.Text.RegularExpressions.Regex.Match(report, @"Stream #\d+:\d+(?:\[[^\]]+\])?(?:\([^)]*\))?: Audio: ([\w]+)");
+            return hasVideo || audioMatch.Success
+                ? new MediaInfo(hasVideo, audioMatch.Success, audioMatch.Success ? audioMatch.Groups[1].Value : null)
+                : null;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Rebuild seekable audio output with stream copy (no re-encoding).</summary>
+    public static bool RemuxAudio(string input, string output)
+    {
+        if (Path is not { } exe) return false;
+        try
+        {
+            var psi = new ProcessStartInfo(exe)
+            {
+                CreateNoWindow = true, UseShellExecute = false,
+                RedirectStandardOutput = true, RedirectStandardError = true,
+            };
+            foreach (var a in new[] { "-y", "-v", "error", "-i", input, "-map", "0:a:0", "-vn", "-c:a", "copy" })
+                psi.ArgumentList.Add(a);
+            if (System.IO.Path.GetExtension(output).Equals(".m4a", StringComparison.OrdinalIgnoreCase))
+            {
+                psi.ArgumentList.Add("-movflags");
+                psi.ArgumentList.Add("+faststart");
+            }
+            psi.ArgumentList.Add(output);
+            using var p = Process.Start(psi)!;
+            p.StandardOutput.ReadToEnd();
+            p.StandardError.ReadToEnd();
+            p.WaitForExit();
+            return p.ExitCode == 0 && File.Exists(output) && new FileInfo(output).Length > 0;
+        }
+        catch { return false; }
+    }
+
     public static bool Mux(IReadOnlyList<string> inputs, string output)
     {
         if (Path is not { } exe) return false;
