@@ -115,6 +115,6 @@ public static class ThemedMessageBox
         root.Children.Add(actions);
         dialog.Content = root;
         dialog.ShowDialog();
-        return new Result(choice, choice is MessageBoxResult.OK or MessageBoxResult.Yes && option?.IsChecked == true);
+        return new Result(choice, (choice is MessageBoxResult.OK or MessageBoxResult.Yes) && option?.IsChecked == true);
     }
 }
