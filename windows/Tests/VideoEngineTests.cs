@@ -112,3 +112,17 @@ public class DirectAudioContainerTests
     public void Remux_only_audio_inside_mp4(string name, bool audio, bool video, string? codec, bool shouldRemux) =>
         Assert.Equal(shouldRemux, FFmpeg.NeedsAudioRemux(name, new FFmpeg.MediaInfo(video, audio, codec)));
 }
+
+public class WindowsFFmpegFolderTests
+{
+    [Fact]
+    public void Tool_folder_is_beside_app()
+    {
+        Assert.Equal(Path.Combine(AppContext.BaseDirectory, "ffmpeg"), FFmpeg.BundledFolder);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Null(FFmpeg.Path is { } path && !path.StartsWith(FFmpeg.BundledFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ? path : null);
+            Assert.Null(FFmpeg.ProbePath is { } probe && !probe.StartsWith(FFmpeg.BundledFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ? probe : null);
+        }
+    }
+}

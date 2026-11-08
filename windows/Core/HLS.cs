@@ -120,17 +120,38 @@ public static class HLS
         Uri.TryCreate(url, UriKind.Absolute, out var u) && u.AbsolutePath.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>The ffmpeg that ships next to the app (or one on the PATH), used to turn saved streams into .mp4 files.</summary>
+/// <summary>Bundled FFmpeg tools. On Windows only the ffmpeg folder next to the app is used.</summary>
 public static class FFmpeg
 {
+    public static string BundledFolder => System.IO.Path.Combine(AppContext.BaseDirectory, "ffmpeg");
+
     public static string? Path
     {
         get
         {
-            var name = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
+            if (OperatingSystem.IsWindows())
+            {
+                var bundled = System.IO.Path.Combine(BundledFolder, "ffmpeg.exe");
+                return File.Exists(bundled) ? bundled : null;
+            }
             var dirs = new List<string> { AppContext.BaseDirectory };
             dirs.AddRange((Environment.GetEnvironmentVariable("PATH") ?? "").Split(System.IO.Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries));
-            return dirs.Select(d => System.IO.Path.Combine(d, name)).FirstOrDefault(File.Exists);
+            return dirs.Select(d => System.IO.Path.Combine(d, "ffmpeg")).FirstOrDefault(File.Exists);
+        }
+    }
+
+    public static string? ProbePath
+    {
+        get
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                var bundled = System.IO.Path.Combine(BundledFolder, "ffprobe.exe");
+                return File.Exists(bundled) ? bundled : null;
+            }
+            if (Path is not { } ffmpeg) return null;
+            var probe = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ffmpeg)!, "ffprobe");
+            return File.Exists(probe) ? probe : null;
         }
     }
 
@@ -154,8 +175,7 @@ public static class FFmpeg
         if (Path is not { } ffmpeg) return null;
         try
         {
-            var probe = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ffmpeg)!, OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe");
-            if (File.Exists(probe))
+            if (ProbePath is { } probe)
             {
                 var psi = new ProcessStartInfo(probe)
                 {
