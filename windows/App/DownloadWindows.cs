@@ -92,7 +92,7 @@ public static class DownloadWindows
             grid.Children.Add(value);
             rowIndex++;
         }
-        var size = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Text = job.Size is long s ? Nexonic.App.Row.Bytes(s) : site ? "Finding the qualities on offer…" : "Checking…" };
+        var size = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Text = job.Size is long s ? Nexonic.App.Row.Bytes(s) : stream ? "HLS stream · size calculated during download" : site ? "Finding the qualities on offer…" : "Checking…" };
         AddRow("Size", size);
         var category = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Text = stream ? "Detecting after download" : FileCategories.Of(name.Text).ToString() };
         AddRow("Category", category);
@@ -110,8 +110,11 @@ public static class DownloadWindows
         folderRow.Children.Add(pick);
         folderRow.Children.Add(folder);
         AddRow("Save to", folderRow);
-        var queue = new ComboBox { DisplayMemberPath = "Name", ItemsSource = m.Queues.ToList(), Margin = new Thickness(0, 3, 0, 3), HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 200 };
-        queue.SelectedItem = m.Queues.FirstOrDefault(q => q.Id == (job.Queue ?? DownloadQueue.MainId)) ?? m.Queues.First();
+        var queue = new ComboBox { Margin = new Thickness(0, 3, 0, 3), HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 200 };
+        foreach (var q in m.Queues)
+            queue.Items.Add(new ComboBoxItem { Content = m.QueueName(q.Id), Tag = q.Id });
+        queue.SelectedItem = queue.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == (job.Queue ?? DownloadQueue.MainId))
+            ?? queue.Items.Cast<ComboBoxItem>().FirstOrDefault();
         AddRow("Queue", queue);
         // Quality: 0 = best, -1 = sound only, otherwise the highest picture height. Filled in when the video is looked up.
         var quality = new ComboBox { Margin = new Thickness(0, 3, 0, 3), HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 200 };
@@ -162,7 +165,7 @@ public static class DownloadWindows
                 var o = new AddOptions
                 {
                     Folder = folder.Text.Trim().Length > 0 ? folder.Text.Trim() : null,
-                    QueueId = (queue.SelectedItem as DownloadQueue)?.Id ?? DownloadQueue.MainId,
+                    QueueId = (queue.SelectedItem as ComboBoxItem)?.Tag as string ?? DownloadQueue.MainId,
                     Start = go,
                     AudioOnly = Chosen() == -1,
                 };
